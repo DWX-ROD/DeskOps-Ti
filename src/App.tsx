@@ -24,7 +24,9 @@ import {
   INITIAL_EQUIPAMENTOS, 
   INITIAL_MOVIMENTACOES, 
   TECNICO_PADRAO,
-  SETORES_EMPRESA
+  SETORES_EMPRESA,
+  normalizarSetor,
+  isSetorLegadoProibido
 } from './data/initialData';
 import { calcularSla } from './utils/sla';
 import { CheckCircle2, AlertCircle } from 'lucide-react';
@@ -86,6 +88,31 @@ export default function App() {
     }
   }, [darkMode]);
 
+  // Limpeza e padronização automática e imediata de setores legados (RH & People, Design & UX, Comercial, Engenharia, etc.)
+  useEffect(() => {
+    setSetores((prev) =>
+      Array.from(
+        new Set(
+          prev
+            .map((s) => normalizarSetor(s))
+            .filter((s) => Boolean(s) && !isSetorLegadoProibido(s))
+        )
+      )
+    );
+    setFuncionarios((prev) =>
+      prev.map((f) => ({
+        ...f,
+        setor: normalizarSetor(f.setor)
+      }))
+    );
+    setChamados((prev) =>
+      prev.map((c) => ({
+        ...c,
+        setor: normalizarSetor(c.setor)
+      }))
+    );
+  }, []);
+
   // Inicializa listener de autenticação Google e restaura conexão salva com a planilha
   useEffect(() => {
     const unsubscribe = initAuth(
@@ -97,19 +124,30 @@ export default function App() {
             setIsSincronizando(true);
             const meta = await obterEGarantirEstruturaPlanilha(savedSheetId, token);
             setPlanilhaAtiva(meta);
-            const dados = await carregarDadosDoGoogleSheets(savedSheetId, token);
-            if (dados.chamados.length > 0) setChamados(dados.chamados);
+            const dados = await carregarDadosDoGoogleSheets(savedSheetId, token, meta.abasExistentes);
+            if (dados.chamados.length > 0) {
+              setChamados(dados.chamados.map((c) => ({ ...c, setor: normalizarSetor(c.setor) })));
+            }
             if (dados.equipamentos.length > 0) setEquipamentos(dados.equipamentos);
             if (dados.funcionarios.length > 0) {
-              setFuncionarios(dados.funcionarios);
-              const setoresDaPlanilha = Array.from(new Set(dados.funcionarios.map((f) => f.setor).filter(Boolean)));
-              if (setoresDaPlanilha.length > 0) {
-                setSetores((prev) => Array.from(new Set([...prev, ...setoresDaPlanilha])));
-              }
+              const funcs = dados.funcionarios.map((f) => ({ ...f, setor: normalizarSetor(f.setor) }));
+              setFuncionarios(funcs);
+              const setoresExtras = funcs
+                .map((f) => f.setor)
+                .filter((s) => Boolean(s) && !isSetorLegadoProibido(s));
+              setSetores(Array.from(new Set([...SETORES_EMPRESA, ...setoresExtras])));
             }
             if (dados.movimentacoes.length > 0) setMovimentacoes(dados.movimentacoes);
             setUltimaSincronizacao(new Date());
-            exibirNotificacao(`Google Sheets conectado: "${meta.nome}" pronto para uso.`);
+
+            if (dados.novosChamadosForms && dados.novosChamadosForms.length > 0) {
+              exibirNotificacao(
+                `Google Sheets conectado! ${dados.novosChamadosForms.length} novo(s) chamado(s) sincronizado(s) de "Respostas ao formulário 1".`,
+                'sucesso'
+              );
+            } else {
+              exibirNotificacao(`Google Sheets conectado: "${meta.nome}" pronto para uso.`);
+            }
           } catch (e: any) {
             console.error('Erro ao restaurar conexão com planilha:', e);
           } finally {
@@ -129,8 +167,52 @@ export default function App() {
     setNotificacao({ mensagem, tipo });
     setTimeout(() => {
       setNotificacao(null);
-    }, 4000);
+    }, 4500);
   };
+
+  // Monitoramento em tempo real (polling a cada 15s) para capturar respostas recém-submetidas do Google Forms
+  useEffect(() => {
+    if (!planilhaAtiva || !userGoogle) return;
+
+    const intervalId = setInterval(async () => {
+      try {
+        const token = await getAccessToken();
+        if (!token) return;
+
+        const dados = await carregarDadosDoGoogleSheets(
+          planilhaAtiva.id,
+          token,
+          planilhaAtiva.abasExistentes
+        );
+
+        // Se houver novos chamados vindos do Forms, alerta o técnico em tempo real
+        if (dados.novosChamadosForms && dados.novosChamadosForms.length > 0) {
+          const qtd = dados.novosChamadosForms.length;
+          const primeiro = dados.novosChamadosForms[0];
+          exibirNotificacao(
+            `🔔 ${qtd} novo${qtd > 1 ? 's' : ''} chamado${qtd > 1 ? 's' : ''} do Google Forms: ${primeiro.id} - ${primeiro.nomeSolicitante} (${primeiro.setor})`,
+            'sucesso'
+          );
+        }
+
+        if (dados.chamados.length > 0) {
+          setChamados(dados.chamados.map((c) => ({ ...c, setor: normalizarSetor(c.setor) })));
+        }
+        if (dados.equipamentos.length > 0) setEquipamentos(dados.equipamentos);
+        if (dados.funcionarios.length > 0) {
+          const funcs = dados.funcionarios.map((f) => ({ ...f, setor: normalizarSetor(f.setor) }));
+          setFuncionarios(funcs);
+        }
+        if (dados.movimentacoes.length > 0) setMovimentacoes(dados.movimentacoes);
+        setUltimaSincronizacao(new Date());
+      } catch (err) {
+        // Erros transitórios de rede em segundo plano não devem bloquear a interface
+        console.debug('Polling background Google Forms silencioso:', err);
+      }
+    }, 15000);
+
+    return () => clearInterval(intervalId);
+  }, [planilhaAtiva, userGoogle]);
 
   // Sincroniza dados com o Google Sheets sob demanda
   const handleSincronizarPlanilha = async () => {
@@ -142,19 +224,28 @@ export default function App() {
       setIsSincronizando(true);
       const token = await getAccessToken();
       if (!token) throw new Error('Sessão expirada. Faça login com o Google.');
-      const dados = await carregarDadosDoGoogleSheets(planilhaAtiva.id, token);
-      setChamados(dados.chamados);
+      const dados = await carregarDadosDoGoogleSheets(planilhaAtiva.id, token, planilhaAtiva.abasExistentes);
+      setChamados(dados.chamados.map((c) => ({ ...c, setor: normalizarSetor(c.setor) })));
       setEquipamentos(dados.equipamentos);
       if (dados.funcionarios.length > 0) {
-        setFuncionarios(dados.funcionarios);
-        const setoresDaPlanilha = Array.from(new Set(dados.funcionarios.map((f) => f.setor).filter(Boolean)));
-        if (setoresDaPlanilha.length > 0) {
-          setSetores((prev) => Array.from(new Set([...prev, ...setoresDaPlanilha])));
-        }
+        const funcs = dados.funcionarios.map((f) => ({ ...f, setor: normalizarSetor(f.setor) }));
+        setFuncionarios(funcs);
+        const setoresExtras = funcs
+          .map((f) => f.setor)
+          .filter((s) => Boolean(s) && !isSetorLegadoProibido(s));
+        setSetores(Array.from(new Set([...SETORES_EMPRESA, ...setoresExtras])));
       }
       setMovimentacoes(dados.movimentacoes);
       setUltimaSincronizacao(new Date());
-      exibirNotificacao('Dados sincronizados com o Google Sheets com sucesso!');
+
+      if (dados.novosChamadosForms && dados.novosChamadosForms.length > 0) {
+        exibirNotificacao(
+          `Sincronizado! ${dados.novosChamadosForms.length} chamado(s) novo(s) importado(s) da aba "Respostas ao formulário 1" com protocolo CH-2026-XXXX.`,
+          'sucesso'
+        );
+      } else {
+        exibirNotificacao('Dados sincronizados com o Google Sheets com sucesso!');
+      }
     } catch (err: any) {
       exibirNotificacao(err?.message || 'Erro ao sincronizar com Google Sheets.', 'info');
     } finally {
@@ -628,6 +719,45 @@ export default function App() {
     return true;
   };
 
+  const handleLimparSetoresLegados = async () => {
+    if (tecnicoAtivo.papel !== 'admin') {
+      exibirNotificacao('Acesso negado: Apenas administradores podem gerenciar setores.', 'info');
+      return;
+    }
+
+    // 1. Reseta a lista de setores estritamente para os 27 setores oficiais
+    setSetores(SETORES_EMPRESA);
+
+    // 2. Normaliza colaboradores e chamados
+    const novosFuncionarios = funcionarios.map((f) => ({
+      ...f,
+      setor: normalizarSetor(f.setor)
+    }));
+    setFuncionarios(novosFuncionarios);
+
+    const novosChamados = chamados.map((c) => ({
+      ...c,
+      setor: normalizarSetor(c.setor)
+    }));
+    setChamados(novosChamados);
+
+    // 3. Atualiza no Google Sheets caso esteja conectado
+    if (planilhaAtiva) {
+      try {
+        const token = await getAccessToken();
+        if (token) {
+          for (const func of novosFuncionarios) {
+            await salvarFuncionarioNaPlanilha(planilhaAtiva.id, token, func);
+          }
+        }
+      } catch (err) {
+        console.error('Erro ao atualizar colaboradores normalizados no Sheets:', err);
+      }
+    }
+
+    exibirNotificacao('Setores legados removidos com sucesso! Todos os registros padronizados nos 27 setores oficiais.');
+  };
+
   // Administração de Funcionários (Exclusivo Administrador)
   const handleAdicionarFuncionario = (novo: Funcionario): boolean => {
     if (tecnicoAtivo.papel !== 'admin') {
@@ -778,6 +908,10 @@ export default function App() {
             onConcluirChamado={handleConcluirChamado}
             onAtualizarStatus={handleAtualizarStatus}
             onAbrirNovoChamadoTab={() => setActiveTab('novo_chamado')}
+            onSincronizarPlanilha={handleSincronizarPlanilha}
+            isSincronizando={isSincronizando}
+            planilhaConectada={Boolean(planilhaAtiva)}
+            ultimaSincronizacao={ultimaSincronizacao}
           />
         )}
 
@@ -810,6 +944,7 @@ export default function App() {
             onAdicionarFuncionario={handleAdicionarFuncionario}
             onEditarFuncionario={handleEditarFuncionario}
             onRemoverFuncionario={handleRemoverFuncionario}
+            onLimparSetoresLegados={handleLimparSetoresLegados}
           />
         )}
 

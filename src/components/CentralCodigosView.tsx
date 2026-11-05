@@ -12,9 +12,9 @@ import {
   CheckCircle2,
   AlertCircle
 } from 'lucide-react';
-import { CODE_GS, SETUP_PLANILHA_GS, INDEX_HTML, GUIA_IMPLANTACAO_MD } from '../data/gasScripts';
+import { CODE_GS, SETUP_PLANILHA_GS, CRIAR_FORMULARIO_GS, INDEX_HTML, GUIA_IMPLANTACAO_MD } from '../data/gasScripts';
 
-type ArquivoCodigo = 'code_gs' | 'setup_gs' | 'index_html' | 'guia_md';
+type ArquivoCodigo = 'code_gs' | 'setup_gs' | 'criar_form_gs' | 'index_html' | 'guia_md';
 
 export const CentralCodigosView: React.FC = () => {
   const [arquivoAtivo, setArquivoAtivo] = useState<ArquivoCodigo>('code_gs');
@@ -26,6 +26,8 @@ export const CentralCodigosView: React.FC = () => {
         return { nome: 'Code', extensao: 'gs', conteudo: CODE_GS, tipo: 'Backend Google Apps Script' };
       case 'setup_gs':
         return { nome: 'Setup_Planilha', extensao: 'gs', conteudo: SETUP_PLANILHA_GS, tipo: 'Script de Inicialização do Banco' };
+      case 'criar_form_gs':
+        return { nome: 'Criar_Formulario', extensao: 'gs', conteudo: CRIAR_FORMULARIO_GS, tipo: 'Criador Automático do Google Form' };
       case 'index_html':
         return { nome: 'Index', extensao: 'html', conteudo: INDEX_HTML, tipo: 'Interface Web App (HTML/JS/CSS)' };
       case 'guia_md':
@@ -162,6 +164,18 @@ export const CentralCodigosView: React.FC = () => {
             >
               <Terminal className="w-3.5 h-3.5" />
               <span>Setup_Planilha.gs</span>
+            </button>
+
+            <button
+              onClick={() => setArquivoAtivo('criar_form_gs')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-mono font-medium transition flex items-center gap-2 ${
+                arquivoAtivo === 'criar_form_gs'
+                  ? 'bg-purple-600 text-white'
+                  : 'text-purple-400 hover:text-purple-300 hover:bg-slate-800'
+              }`}
+            >
+              <FileCode className="w-3.5 h-3.5 text-purple-400" />
+              <span>Criar_Formulario.gs (Forms)</span>
             </button>
 
             <button

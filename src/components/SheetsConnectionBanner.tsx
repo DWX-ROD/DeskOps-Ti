@@ -34,7 +34,7 @@ export const SheetsConnectionBanner: React.FC<SheetsConnectionBannerProps> = ({
               </span>
               <span className="hidden md:inline text-emerald-500/80">|</span>
               <span className="hidden md:inline text-[11px] text-emerald-300/80">
-                4 Abas: Chamados, Equipamentos, Funcionários, Movimentações
+                4 Abas DeskOps + Respostas ao formulário 1 (Auto-sync)
               </span>
             </div>
           </div>

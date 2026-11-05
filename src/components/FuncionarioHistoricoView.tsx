@@ -26,9 +26,11 @@ import {
   X,
   Check,
   Edit2,
-  ArrowRightLeft
+  ArrowRightLeft,
+  Sparkles
 } from 'lucide-react';
 import { Funcionario, Equipamento, Chamado, Tecnico } from '../types';
+import { normalizarSetor, isSetorLegadoProibido, SETORES_EMPRESA } from '../data/initialData';
 
 interface FuncionarioHistoricoViewProps {
   funcionarios: Funcionario[];
@@ -43,6 +45,7 @@ interface FuncionarioHistoricoViewProps {
   onAdicionarFuncionario: (funcionario: Funcionario) => boolean;
   onEditarFuncionario: (funcionario: Funcionario) => boolean;
   onRemoverFuncionario: (idFuncionario: string) => boolean;
+  onLimparSetoresLegados?: () => void;
 }
 
 export const FuncionarioHistoricoView: React.FC<FuncionarioHistoricoViewProps> = ({
@@ -57,13 +60,14 @@ export const FuncionarioHistoricoView: React.FC<FuncionarioHistoricoViewProps> =
   onEditarSetor,
   onAdicionarFuncionario,
   onEditarFuncionario,
-  onRemoverFuncionario
+  onRemoverFuncionario,
+  onLimparSetoresLegados
 }) => {
   const isAdmin = tecnicoAtivo.papel === 'admin';
 
   // Estado do Setor Selecionado
   const [setorSelecionado, setSetorSelecionado] = useState<string>(
-    setores[0] || 'Financeiro'
+    setores[0] || 'OBIC'
   );
   
   // Modo de visualização: 'consolidado' (setor inteiro) ou 'funcionario' (individual)
@@ -99,12 +103,18 @@ export const FuncionarioHistoricoView: React.FC<FuncionarioHistoricoViewProps> =
 
   const [modalAcessoNegado, setModalAcessoNegado] = useState<string | null>(null);
 
-  // Lista consolidada de setores
-  const todosSetores = Array.from(new Set([...setores, ...funcionarios.map(f => f.setor)]));
+  // Lista consolidada de setores (Exclui estritamente qualquer setor legado que não existe na lista oficial)
+  const todosSetores = Array.from(
+    new Set(
+      [...SETORES_EMPRESA, ...setores]
+        .map((s) => normalizarSetor(s))
+        .filter((s) => Boolean(s) && !isSetorLegadoProibido(s))
+    )
+  );
 
-  // Funcionários do setor selecionado
+  // Funcionários do setor selecionado (com suporte a setores normalizados)
   const funcionariosDoSetor = funcionarios.filter(
-    (f) => f.setor.toLowerCase() === setorSelecionado.toLowerCase()
+    (f) => normalizarSetor(f.setor).toLowerCase() === setorSelecionado.toLowerCase()
   );
 
   // Funcionário ativo detalhado
@@ -124,7 +134,7 @@ export const FuncionarioHistoricoView: React.FC<FuncionarioHistoricoViewProps> =
 
   // Chamados abertos por qualquer membro do setor
   const chamadosDoSetor = chamados.filter((ch) => {
-    if (ch.setor.toLowerCase() === setorSelecionado.toLowerCase()) return true;
+    if (normalizarSetor(ch.setor).toLowerCase() === setorSelecionado.toLowerCase()) return true;
     const sol = ch.nomeSolicitante.toLowerCase();
     return nomesFuncionariosSetor.some((nome) => sol.includes(nome) || nome.includes(sol));
   });
@@ -358,6 +368,17 @@ export const FuncionarioHistoricoView: React.FC<FuncionarioHistoricoViewProps> =
 
         {/* Ações de Setor */}
         <div className="flex items-center gap-2">
+          {isAdmin && onLimparSetoresLegados && (
+            <button
+              onClick={onLimparSetoresLegados}
+              className="px-3 py-2 text-xs font-semibold rounded-lg border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-200 hover:bg-amber-100 dark:hover:bg-amber-900/50 shadow-2xs transition flex items-center gap-1.5"
+              title="Exclui definitivamente quaisquer setores legados/antigos (RH & People, Design & UX, Comercial, Engenharia, etc.) e normaliza com os 27 setores oficiais"
+            >
+              <Sparkles className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
+              <span>Remover Setores Antigos</span>
+            </button>
+          )}
+
           <button
             onClick={() => {
               if (!isAdmin) {

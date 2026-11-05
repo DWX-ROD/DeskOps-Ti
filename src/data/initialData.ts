@@ -33,8 +33,8 @@ export const INITIAL_FUNCIONARIOS: Funcionario[] = [
     id: 'FUNC-0101',
     nomeCompleto: 'Mariana Souza',
     cpf: '123.456.789-00',
-    cargo: 'Analista Financeiro Pleno',
-    setor: 'Financeiro',
+    cargo: 'Analista de Contas Pleno',
+    setor: 'FINANCEIRO',
     email: 'mariana.souza@empresa.com',
     status: 'Ativo'
   },
@@ -42,8 +42,8 @@ export const INITIAL_FUNCIONARIOS: Funcionario[] = [
     id: 'FUNC-0102',
     nomeCompleto: 'Carlos Eduardo',
     cpf: '234.567.890-11',
-    cargo: 'Product Designer Lead',
-    setor: 'Design & UX',
+    cargo: 'Analista de Comunicação',
+    setor: 'GCOM',
     email: 'carlos.eduardo@empresa.com',
     status: 'Ativo'
   },
@@ -51,8 +51,8 @@ export const INITIAL_FUNCIONARIOS: Funcionario[] = [
     id: 'FUNC-0103',
     nomeCompleto: 'Fernanda Lima',
     cpf: '345.678.901-22',
-    cargo: 'Gerente Comercial',
-    setor: 'Comercial',
+    cargo: 'Assistente Administrativo',
+    setor: 'GADM',
     email: 'fernanda.lima@empresa.com',
     status: 'Ativo'
   },
@@ -60,8 +60,8 @@ export const INITIAL_FUNCIONARIOS: Funcionario[] = [
     id: 'FUNC-0104',
     nomeCompleto: 'Lucas Oliveira',
     cpf: '456.789.012-33',
-    cargo: 'Engenheiro de Software Sênior',
-    setor: 'Engenharia',
+    cargo: 'Analista de Sistemas',
+    setor: 'TI',
     email: 'lucas.oliveira@empresa.com',
     status: 'Ativo'
   },
@@ -70,7 +70,7 @@ export const INITIAL_FUNCIONARIOS: Funcionario[] = [
     nomeCompleto: 'Beatriz Mendes',
     cpf: '567.890.123-44',
     cargo: 'Coordenadora de Recursos Humanos',
-    setor: 'RH & People',
+    setor: 'RH',
     email: 'beatriz.mendes@empresa.com',
     status: 'Ativo'
   },
@@ -78,10 +78,109 @@ export const INITIAL_FUNCIONARIOS: Funcionario[] = [
     id: 'FUNC-0106',
     nomeCompleto: 'Roberto Albuquerque',
     cpf: '678.901.234-55',
-    cargo: 'Auditor Fiscal',
-    setor: 'Controladoria',
+    cargo: 'Analista de Prestação de Contas',
+    setor: 'PRESTAÇÃO DE CONTAS',
     email: 'roberto.albuquerque@empresa.com',
     status: 'Inativo'
+  },
+  {
+    id: 'FUNC-0107',
+    nomeCompleto: 'Alexandre Prado',
+    cpf: '789.012.345-66',
+    cargo: 'Analista de Planejamento',
+    setor: 'PLAN',
+    email: 'alexandre.prado@empresa.com',
+    status: 'Ativo'
+  },
+  {
+    id: 'FUNC-0108',
+    nomeCompleto: 'Juliana Castro',
+    cpf: '890.123.456-77',
+    cargo: 'Ouvidora Chefe',
+    setor: 'OUVIDORIA',
+    email: 'juliana.castro@empresa.com',
+    status: 'Ativo'
+  },
+  {
+    id: 'FUNC-0109',
+    nomeCompleto: 'Marcos Vinicius',
+    cpf: '901.234.567-88',
+    cargo: 'Gerente Técnico',
+    setor: 'GTEC',
+    email: 'marcos.vinicius@empresa.com',
+    status: 'Ativo'
+  },
+  {
+    id: 'FUNC-0110',
+    nomeCompleto: 'Patrícia Nogueira',
+    cpf: '012.345.678-99',
+    cargo: 'Advogada Corporativa',
+    setor: 'JURIDICO',
+    email: 'patricia.nogueira@empresa.com',
+    status: 'Ativo'
+  },
+  {
+    id: 'FUNC-0111',
+    nomeCompleto: 'Renato Faria',
+    cpf: '123.456.780-12',
+    cargo: 'Encarregado de Patrimônio',
+    setor: 'PATRIMONIO',
+    email: 'renato.faria@empresa.com',
+    status: 'Ativo'
+  },
+  {
+    id: 'FUNC-0112',
+    nomeCompleto: 'Simone Duarte',
+    cpf: '234.567.891-23',
+    cargo: 'Chefe de Gabinete',
+    setor: 'GABINETE',
+    email: 'simone.duarte@empresa.com',
+    status: 'Ativo'
+  },
+  {
+    id: 'FUNC-0113',
+    nomeCompleto: 'Thiago Barreto',
+    cpf: '345.678.902-34',
+    cargo: 'Arquiteto Urbanista',
+    setor: 'ARQUITETURA',
+    email: 'thiago.barreto@empresa.com',
+    status: 'Ativo'
+  },
+  {
+    id: 'FUNC-0114',
+    nomeCompleto: 'Camila Guimarães',
+    cpf: '456.789.013-45',
+    cargo: 'Analista de Fomento e Projetos',
+    setor: 'FOMENTO',
+    email: 'camila.guimaraes@empresa.com',
+    status: 'Ativo'
+  },
+  {
+    id: 'FUNC-0115',
+    nomeCompleto: 'Henrique Valente',
+    cpf: '567.890.124-56',
+    cargo: 'Assessor Executivo',
+    setor: 'SECEXECC',
+    email: 'henrique.valente@empresa.com',
+    status: 'Ativo'
+  },
+  {
+    id: 'FUNC-0116',
+    nomeCompleto: 'Daniela Paes',
+    cpf: '678.901.235-67',
+    cargo: 'Gestora de Informações Culturais',
+    setor: 'MAPA CULTURAL',
+    email: 'daniela.paes@empresa.com',
+    status: 'Ativo'
+  },
+  {
+    id: 'FUNC-0117',
+    nomeCompleto: 'Gustavo Meireles',
+    cpf: '789.012.346-78',
+    cargo: 'Coordenador de Conselhos',
+    setor: 'CASA DOS CONSELHOS',
+    email: 'gustavo.meireles@empresa.com',
+    status: 'Ativo'
   }
 ];
 
@@ -225,7 +324,7 @@ export const INITIAL_CHAMADOS: Chamado[] = [
     dataHoraAbertura: formatarData(data3HorasAtras),
     nomeSolicitante: 'Mariana Souza',
     emailSolicitante: 'mariana.souza@empresa.com',
-    setor: 'Financeiro',
+    setor: 'FINANCEIRO',
     categoria: '🔴 Sem Internet / Switch Baia 4',
     descricao: 'Queda total de conexão física nos pontos da baia do financeiro durante fechamento da folha e conciliação bancária.',
     prioridade: 'Crítica',
@@ -239,7 +338,7 @@ export const INITIAL_CHAMADOS: Chamado[] = [
     dataHoraAbertura: formatarData(data3HorasMeiaAtras),
     nomeSolicitante: 'Carlos Eduardo',
     emailSolicitante: 'carlos.eduardo@empresa.com',
-    setor: 'Design & UX',
+    setor: 'GCOM',
     categoria: '💻 Computador não liga / Tela preta',
     descricao: 'MacBook não dá sinal de vida após a atualização de segurança de ontem à noite. Carregador original testado em outras tomadas.',
     prioridade: 'Alta',
@@ -253,7 +352,7 @@ export const INITIAL_CHAMADOS: Chamado[] = [
     dataHoraAbertura: formatarData(data1HoraAtras),
     nomeSolicitante: 'Fernanda Lima',
     emailSolicitante: 'fernanda.lima@empresa.com',
-    setor: 'Comercial',
+    setor: 'GADM',
     categoria: '🖨️ Impressora não funciona',
     descricao: 'A impressora laser Brother do 2º andar está atolando todas as folhas de proposta comercial e avisando toner baixo.',
     prioridade: 'Média',
@@ -267,7 +366,7 @@ export const INITIAL_CHAMADOS: Chamado[] = [
     dataHoraAbertura: formatarData(data20MinAtras),
     nomeSolicitante: 'Lucas Oliveira',
     emailSolicitante: 'lucas.oliveira@empresa.com',
-    setor: 'Engenharia',
+    setor: 'TI',
     categoria: '🔑 Acessos & Senhas',
     descricao: 'Necessidade de liberação de permissão na VPN corporativa e acesso ao repositório de microsserviços de cobrança.',
     prioridade: 'Baixa',
@@ -281,7 +380,7 @@ export const INITIAL_CHAMADOS: Chamado[] = [
     dataHoraAbertura: formatarData(new Date(dataOntem.getTime() - 2 * 60 * 60 * 1000)),
     nomeSolicitante: 'Beatriz Mendes',
     emailSolicitante: 'beatriz.mendes@empresa.com',
-    setor: 'RH & People',
+    setor: 'RH',
     categoria: '📦 Instalação de Software',
     descricao: 'Instalação do pacote de software de ponto biométrico e certificação digital A1.',
     prioridade: 'Média',
@@ -303,12 +402,103 @@ export const CATEGORIAS_PROBLEMAS = [
 ];
 
 export const SETORES_EMPRESA = [
-  'Financeiro',
-  'Design & UX',
-  'Comercial',
-  'Engenharia',
-  'RH & People',
-  'Operações',
-  'Controladoria',
-  'Jurídico'
+  'OBIC',
+  'RH',
+  'GPAI',
+  'SECEXECC',
+  'GCOM',
+  'PLAN',
+  'OUVIDORIA',
+  'GTEC',
+  'GEDH',
+  'GPC',
+  'FOMENTO',
+  'TI',
+  'CPECV',
+  'CPAD',
+  'PRESTAÇÃO DE CONTAS',
+  'PATRIMONIO',
+  'JURIDICO',
+  'FINANCEIRO',
+  'SECEXECG',
+  'GABINETE',
+  'GADM',
+  'MAPA CULTURAL',
+  'GCICO',
+  'ARQUITETURA',
+  'COMED',
+  'GPE',
+  'CASA DOS CONSELHOS'
 ];
+
+/**
+ * Mapeamento e exclusão de setores legados/antigos para os novos 27 setores oficiais
+ */
+export const SETOR_MAP_LEGADO: Record<string, string> = {
+  'rh & people': 'RH',
+  'recursos humanos': 'RH',
+  'recursos humanos (rh)': 'RH',
+  'design & ux': 'GCOM',
+  'design': 'GCOM',
+  'marketing': 'GCOM',
+  'comercial': 'GADM',
+  'comercial / vendas': 'GADM',
+  'vendas': 'GADM',
+  'diretoria': 'GADM',
+  'diretoria / administrativo': 'GADM',
+  'operações': 'GADM',
+  'operações / logística': 'GADM',
+  'logística': 'GADM',
+  'engenharia': 'TI',
+  'engenharia / ti': 'TI',
+  'tecnologia': 'TI',
+  'atendimento': 'OUVIDORIA',
+  'atendimento / suporte ao cliente': 'OUVIDORIA',
+  'financeiro': 'FINANCEIRO',
+  'prestação de contas': 'PRESTAÇÃO DE CONTAS',
+  'patrimonio': 'PATRIMONIO',
+  'patrimônio': 'PATRIMONIO',
+  'juridico': 'JURIDICO',
+  'jurídico': 'JURIDICO',
+  'ouvidoria': 'OUVIDORIA',
+  'gabinete': 'GABINETE'
+};
+
+export const SETORES_LEGADOS_PROIBIDOS = [
+  'rh & people',
+  'design & ux',
+  'comercial',
+  'comercial / vendas',
+  'engenharia',
+  'engenharia / ti',
+  'marketing',
+  'diretoria / administrativo',
+  'operações / logística',
+  'atendimento / suporte ao cliente'
+];
+
+export function normalizarSetor(setorOriginal: string): string {
+  if (!setorOriginal) return 'TI';
+  const limpo = setorOriginal.trim();
+  const lower = limpo.toLowerCase();
+
+  // Verifica se bate exatamente com um dos 27 setores oficiais
+  const setorOficial = SETORES_EMPRESA.find((s) => s.toLowerCase() === lower);
+  if (setorOficial) {
+    return setorOficial;
+  }
+
+  // Verifica se é um setor legado a ser migrado
+  if (SETOR_MAP_LEGADO[lower]) {
+    return SETOR_MAP_LEGADO[lower];
+  }
+
+  return limpo;
+}
+
+export function isSetorLegadoProibido(setor: string): boolean {
+  if (!setor) return false;
+  const lower = setor.trim().toLowerCase();
+  return SETORES_LEGADOS_PROIBIDOS.includes(lower);
+}
+

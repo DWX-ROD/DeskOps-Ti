@@ -4,6 +4,8 @@
  */
 
 import { Chamado, Funcionario, Equipamento, Movimentacao, PrioridadeChamado, StatusChamado, TipoEquipamento, StatusEquipamento } from '../types';
+import { normalizarSetor } from '../data/initialData';
+import { calcularSla } from '../utils/sla';
 
 export const NOMES_ABAS = {
   FUNCIONARIOS: 'Funcionários',
@@ -278,18 +280,296 @@ export async function obterEGarantirEstruturaPlanilha(
   };
 }
 
+export interface ResultadoSincronizacaoForms {
+  totalNovosImportados: number;
+  novosChamados: Chamado[];
+  nomeAbaOrigem: string | null;
+}
+
+/**
+ * Lê novas respostas enviadas pelo Google Forms na aba 'Respostas ao formulário 1'
+ * (ou qualquer aba de respostas vinculada pelo Google Forms),
+ * formata o protocolo sequencial CH-2026-XXXX, calcula o SLA por prioridade,
+ * grava diretamente na aba 'Chamados (Helpdesk)' e retorna os chamados novos gerados.
+ */
+export async function sincronizarAbaFormularioParaChamados(
+  spreadsheetId: string,
+  accessToken: string,
+  abasExistentes?: { id: number; titulo: string }[]
+): Promise<ResultadoSincronizacaoForms> {
+  try {
+    // 1. Descobrir se há alguma aba de respostas do Google Forms
+    let abas = abasExistentes;
+    if (!abas || abas.length === 0) {
+      const metaRes = await fetch(
+        `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}?fields=sheets.properties(sheetId,title)`,
+        { headers: { Authorization: `Bearer ${accessToken}` } }
+      );
+      if (metaRes.ok) {
+        const metaData = await metaRes.json();
+        abas = (metaData.sheets || []).map((s: any) => ({
+          id: s.properties?.sheetId,
+          titulo: s.properties?.title
+        }));
+      }
+    }
+
+    // Procura por abas criadas pelo Google Forms
+    // Padrões comuns: "Respostas ao formulário 1", "Respostas ao formulário", "Form Responses 1"
+    const abaForms = (abas || []).find((a) => {
+      const t = (a.titulo || '').toLowerCase().trim();
+      return (
+        t.includes('respostas ao formul') ||
+        t.includes('respostas ao form') ||
+        t.includes('form responses') ||
+        t.startsWith('respostas')
+      );
+    });
+
+    const nomeAbaRespostas = abaForms ? abaForms.titulo : 'Respostas ao formulário 1';
+
+    // 2. Busca todas as linhas da aba de respostas do formulário
+    const resForms = await fetch(
+      `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent("'" + nomeAbaRespostas + "'!A1:Z")}`,
+      { headers: { Authorization: `Bearer ${accessToken}` } }
+    );
+
+    if (!resForms.ok) {
+      // Se a aba não existe ainda na planilha, retorna vazio sem travar a aplicação
+      return { totalNovosImportados: 0, novosChamados: [], nomeAbaOrigem: null };
+    }
+
+    const dataForms = await resForms.json();
+    const rowsForms: any[][] = dataForms.values || [];
+
+    if (rowsForms.length <= 1) {
+      // Aba vazia ou só contém linha de cabeçalho
+      return { totalNovosImportados: 0, novosChamados: [], nomeAbaOrigem: nomeAbaRespostas };
+    }
+
+    // 3. Lê os chamados já existentes na aba 'Chamados (Helpdesk)'
+    const resChamados = await fetch(
+      `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent("'" + NOMES_ABAS.CHAMADOS + "'!A1:K")}`,
+      { headers: { Authorization: `Bearer ${accessToken}` } }
+    );
+
+    const dataChamados = resChamados.ok ? await resChamados.json() : { values: [] };
+    const rowsChamados: any[][] = dataChamados.values || [];
+
+    // Determina o maior sequencial existente para continuar o padrão CH-2026-XXXX
+    let maxSequencial = 0;
+    const anoAtual = new Date().getFullYear();
+
+    for (let i = 1; i < rowsChamados.length; i++) {
+      const protocolo = String(rowsChamados[i][0] || '').trim();
+      const match = protocolo.match(/^CH-(\d{4})-(\d+)$/i);
+      if (match) {
+        const num = parseInt(match[2], 10);
+        if (!isNaN(num) && num > maxSequencial) {
+          maxSequencial = num;
+        }
+      }
+    }
+
+    // Se nenhum chamado tiver protocolo CH-YYYY-XXXX, usa o total de linhas como base
+    if (maxSequencial === 0 && rowsChamados.length > 1) {
+      maxSequencial = rowsChamados.length - 1;
+    }
+
+    // Constrói assinaturas únicas dos chamados já presentes para evitar duplicatas
+    const assinaturasExistentes = new Set<string>();
+    for (let i = 1; i < rowsChamados.length; i++) {
+      const r = rowsChamados[i];
+      const dataH = String(r[1] || '').trim();
+      const sol = String(r[2] || '').trim().toLowerCase();
+      const em = String(r[3] || '').trim().toLowerCase();
+      const desc = String(r[6] || '').trim().toLowerCase();
+
+      const digitosData = dataH.replace(/\D/g, '');
+      if (digitosData && em) assinaturasExistentes.add(`${digitosData}_${em}`);
+      if (digitosData && sol) assinaturasExistentes.add(`${digitosData}_${sol}`);
+      if (em && desc) assinaturasExistentes.add(`${em}_${desc.slice(0, 40)}`);
+      if (sol && desc) assinaturasExistentes.add(`${sol}_${desc.slice(0, 40)}`);
+      if (dataH) assinaturasExistentes.add(dataH);
+    }
+
+    // 4. Mapeamento inteligente de colunas pelo cabeçalho da aba de respostas do Forms
+    const cabecalhos = (rowsForms[0] || []).map((h: any) => String(h || '').trim().toLowerCase());
+
+    let colCarimbo = cabecalhos.findIndex((h: string) => h.includes('carimbo') || h.includes('data') || h.includes('timestamp'));
+    if (colCarimbo === -1) colCarimbo = 0;
+
+    let colNome = cabecalhos.findIndex((h: string) => h.includes('nome') || h.includes('solicitante'));
+    if (colNome === -1) colNome = 1;
+
+    let colEmail = cabecalhos.findIndex((h: string) => h.includes('e-mail') || h.includes('email') || h.includes('endereço'));
+    if (colEmail === -1) colEmail = 2;
+
+    let colSetor = cabecalhos.findIndex((h: string) => h.includes('setor') || h.includes('departamento') || h.includes('área') || h.includes('area'));
+    if (colSetor === -1) colSetor = 3;
+
+    let colCategoria = cabecalhos.findIndex((h: string) => h.includes('categoria') || h.includes('problema') || h.includes('tipo'));
+    if (colCategoria === -1) colCategoria = 4;
+
+    let colDescricao = cabecalhos.findIndex((h: string) => h.includes('descri') || h.includes('detalhe') || h.includes('mensagem'));
+    if (colDescricao === -1) colDescricao = 5;
+
+    let colUrgencia = cabecalhos.findIndex((h: string) => h.includes('urgência') || h.includes('urgencia') || h.includes('prioridade') || h.includes('impacto'));
+    if (colUrgencia === -1) colUrgencia = 6;
+
+    // 5. Itera sobre as respostas e gera os novos chamados
+    const novasLinhas: any[][] = [];
+    const novosChamados: Chamado[] = [];
+
+    for (let r = 1; r < rowsForms.length; r++) {
+      const row = rowsForms[r];
+      if (!row || row.length === 0 || !row.some((c: any) => c && String(c).trim())) {
+        continue;
+      }
+
+      const carimboOriginal = String(row[colCarimbo] || '').trim();
+      const solicitante = String(row[colNome] || 'Colaborador').trim();
+      const email = String(row[colEmail] || '').trim();
+      const setorBruto = String(row[colSetor] || 'TI').trim();
+      const categoriaBruta = String(row[colCategoria] || '⚙️ Outros').trim();
+      const descricao = String(row[colDescricao] || '').trim();
+      const urgenciaBruta = String(row[colUrgencia] || 'Média').trim();
+
+      const digitosData = carimboOriginal.replace(/\D/g, '');
+      const emLower = email.toLowerCase();
+      const solLower = solicitante.toLowerCase();
+      const descLower = descricao.slice(0, 40).toLowerCase();
+
+      // Checa duplicidade
+      const jaExiste =
+        (digitosData && emLower && assinaturasExistentes.has(`${digitosData}_${emLower}`)) ||
+        (digitosData && solLower && assinaturasExistentes.has(`${digitosData}_${solLower}`)) ||
+        (emLower && descLower && assinaturasExistentes.has(`${emLower}_${descLower}`)) ||
+        (carimboOriginal && assinaturasExistentes.has(carimboOriginal));
+
+      if (jaExiste) {
+        continue;
+      }
+
+      // Novo chamado detectado! Gera sequencial no padrão CH-YYYY-XXXX (ex: CH-2026-0045)
+      maxSequencial++;
+      const protocolo = `CH-${anoAtual}-${String(maxSequencial).padStart(4, '0')}`;
+
+      // Setor normalizado para um dos 27 oficiais
+      const setor = normalizarSetor(setorBruto);
+
+      // Prioridade e SLA
+      let prioridade: PrioridadeChamado = 'Média';
+      const uLower = urgenciaBruta.toLowerCase();
+      if (uLower.includes('crític') || uLower.includes('critic') || uLower.includes('2h')) {
+        prioridade = 'Crítica';
+      } else if (uLower.includes('alta') || uLower.includes('4h')) {
+        prioridade = 'Alta';
+      } else if (uLower.includes('baixa') || uLower.includes('24h')) {
+        prioridade = 'Baixa';
+      } else {
+        prioridade = 'Média';
+      }
+
+      const dataAbertura = carimboOriginal || new Date().toISOString();
+      const sla = calcularSla(dataAbertura, prioridade, 'Aberto');
+      const tempoAtendimentoSla = `${sla.limiteHoras}h (Dentro do Prazo)`;
+
+      const linhaTabela = [
+        protocolo,
+        dataAbertura,
+        solicitante,
+        email,
+        setor,
+        categoriaBruta,
+        descricao,
+        prioridade,
+        'Aberto',
+        tempoAtendimentoSla,
+        '' // Técnico Responsável inicial: vazio
+      ];
+
+      novasLinhas.push(linhaTabela);
+
+      novosChamados.push({
+        id: protocolo,
+        dataHoraAbertura: dataAbertura,
+        nomeSolicitante: solicitante,
+        emailSolicitante: email,
+        setor,
+        categoria: categoriaBruta,
+        descricao,
+        prioridade,
+        status: 'Aberto',
+        tempoAtendimentoSla,
+        emailTecnicoResponsavel: '',
+        observacoesTecnicas: `Chamado importado automaticamente da aba "${nomeAbaRespostas}".`,
+        dataFechamento: null
+      });
+
+      // Registra assinatura para não duplicar se houver múltiplas submissões
+      if (digitosData && emLower) assinaturasExistentes.add(`${digitosData}_${emLower}`);
+      if (carimboOriginal) assinaturasExistentes.add(carimboOriginal);
+      if (emLower && descLower) assinaturasExistentes.add(`${emLower}_${descLower}`);
+    }
+
+    // 6. Grava em lote na aba 'Chamados (Helpdesk)' da planilha
+    if (novasLinhas.length > 0) {
+      const appendRange = `'${NOMES_ABAS.CHAMADOS}'!A:K`;
+      const resAppend = await fetch(
+        `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(appendRange)}:append?valueInputOption=USER_ENTERED`,
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ values: novasLinhas })
+        }
+      );
+
+      if (!resAppend.ok) {
+        console.warn('Erro ao anexar novos chamados do Forms no Sheets:', await resAppend.text());
+      }
+    }
+
+    return {
+      totalNovosImportados: novosChamados.length,
+      novosChamados,
+      nomeAbaOrigem: nomeAbaRespostas
+    };
+  } catch (err) {
+    console.error('Erro na sincronização de Respostas ao Formulário 1:', err);
+    return { totalNovosImportados: 0, novosChamados: [], nomeAbaOrigem: null };
+  }
+}
+
 /**
  * Lê todos os dados das 4 abas em uma única requisição em lote (batchGet)
+ * e sincroniza previamente novas respostas da aba 'Respostas ao formulário 1'.
  */
 export async function carregarDadosDoGoogleSheets(
   spreadsheetId: string,
-  accessToken: string
+  accessToken: string,
+  abasExistentes?: { id: number; titulo: string }[]
 ): Promise<{
   chamados: Chamado[];
   equipamentos: Equipamento[];
   funcionarios: Funcionario[];
   movimentacoes: Movimentacao[];
+  novosChamadosForms?: Chamado[];
 }> {
+  // Sincroniza automaticamente qualquer resposta nova do Google Forms para Chamados (Helpdesk)
+  let novosChamadosForms: Chamado[] = [];
+  try {
+    const resSync = await sincronizarAbaFormularioParaChamados(spreadsheetId, accessToken, abasExistentes);
+    if (resSync.totalNovosImportados > 0) {
+      novosChamadosForms = resSync.novosChamados;
+    }
+  } catch (errSync) {
+    console.warn('Sincronização de formulário:', errSync);
+  }
+
   const ranges = [
     `'${NOMES_ABAS.CHAMADOS}'!A2:K`,
     `'${NOMES_ABAS.EQUIPAMENTOS}'!A2:F`,
@@ -325,14 +605,15 @@ export async function carregarDadosDoGoogleSheets(
       dataHoraAbertura: row[1] || new Date().toISOString(),
       nomeSolicitante: row[2] || 'Colaborador',
       emailSolicitante: row[3] || '',
-      setor: row[4] || 'Geral',
+      setor: normalizarSetor(row[4] || 'TI'),
       categoria: row[5] || '⚙️ Outros',
       descricao: row[6] || '',
       prioridade: (row[7] || 'Média') as PrioridadeChamado,
       status: (row[8] || 'Aberto') as StatusChamado,
       tempoAtendimentoSla: row[9] || 'No Prazo',
-      emailTecnicoResponsavel: row[10] || null,
-      observacoesTecnicas: ''
+      emailTecnicoResponsavel: row[10] || '',
+      observacoesTecnicas: '',
+      dataFechamento: null
     };
   });
 
@@ -364,7 +645,7 @@ export async function carregarDadosDoGoogleSheets(
       id: `FUNC-${(index + 1).toString().padStart(4, '0')}`,
       nomeCompleto: row[0] || 'Colaborador',
       email: row[1] || `colaborador${index + 1}@empresa.com`,
-      setor: row[2] || 'Geral',
+      setor: normalizarSetor(row[2] || 'TI'),
       status: ((row[3] || 'Ativo').toLowerCase().includes('inativ') ? 'Inativo' : 'Ativo') as 'Ativo' | 'Inativo',
       cpf: '000.000.000-00',
       cargo: 'Colaborador'
@@ -386,7 +667,7 @@ export async function carregarDadosDoGoogleSheets(
     };
   });
 
-  return { chamados, equipamentos, funcionarios, movimentacoes };
+  return { chamados, equipamentos, funcionarios, movimentacoes, novosChamadosForms };
 }
 
 /**

@@ -18,13 +18,16 @@ import firebaseConfig from '../../firebase-applet-config.json';
 const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 
-// Provedor Google com os escopos autorizados para Google Sheets e Drive
+// Provedor Google com os escopos autorizados para Google Sheets, Drive e Forms
 export const SCOPES = [
   'https://www.googleapis.com/auth/spreadsheets',
   'https://www.googleapis.com/auth/spreadsheets.readonly',
   'https://www.googleapis.com/auth/drive',
   'https://www.googleapis.com/auth/drive.file',
-  'https://www.googleapis.com/auth/drive.readonly'
+  'https://www.googleapis.com/auth/drive.readonly',
+  'https://www.googleapis.com/auth/forms.body',
+  'https://www.googleapis.com/auth/forms.body.readonly',
+  'https://www.googleapis.com/auth/forms.responses.readonly'
 ];
 
 const provider = new GoogleAuthProvider();
@@ -77,7 +80,21 @@ export const googleSignIn = async (): Promise<{ user: User; accessToken: string 
     cachedAccessToken = credential.accessToken;
     return { user: result.user, accessToken: cachedAccessToken };
   } catch (error: any) {
-    console.error('Erro na autenticação com Google:', error);
+    // Trata fechamento normal ou cancelamento do popup pelo usuário sem disparar erro no console
+    if (
+      error?.code === 'auth/popup-closed-by-user' ||
+      error?.code === 'auth/cancelled-popup-request'
+    ) {
+      return null;
+    }
+
+    if (error?.code === 'auth/popup-blocked') {
+      throw new Error(
+        'A janela pop-up do Google foi bloqueada pelo navegador. Permita pop-ups para esta página nas configurações do navegador e tente novamente.'
+      );
+    }
+
+    console.error('Erro na autenticação com Google:', error?.message || error);
     throw error;
   } finally {
     isSigningIn = false;

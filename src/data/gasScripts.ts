@@ -277,84 +277,198 @@ function removerEquipamento(idEquipamento) {
 }
 
 // ============================================================================
+// ============================================================================
 // 1. GATILHO AUTOMÁTICO DE GOOGLE FORMS (onFormSubmit)
 // ============================================================================
 /**
  * Gatilho acionado automaticamente quando um colaborador submete o Google Forms.
- * Gera o protocolo único, grava na aba Chamados e envia e-mail de confirmação.
+ * 1. Mapeia campos do formulário: E-mail, Nome Completo, Setor, Categoria, Descrição, Urgência
+ * 2. Gera Protocolo único sequencial: CH-YYYY-XXXX (ex: CH-2026-0045)
+ * 3. Calcula prazo limite de SLA com base na urgência (Crítica=2h, Alta=4h, Média=8h, Baixa=24h)
+ * 4. Define Status inicial como 'Aberto' e Técnico Responsável como 'Sem Técnico'
+ * 5. Normaliza e grava diretamente na aba principal 'Chamados (Helpdesk)'
+ * 6. Envia e-mail de confirmação automático com o número de protocolo ao solicitante
  */
 function onFormSubmit(e) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const sheetChamados = ss.getSheetByName(CONFIG.NOMES_ABAS.CHAMADOS);
-  if (!sheetChamados) return;
+  // Localiza a aba principal de chamados (suporta tanto 'Chamados (Helpdesk)' quanto 'Chamados')
+  const sheetChamados = ss.getSheetByName(CONFIG.NOMES_ABAS.CHAMADOS) || 
+                        ss.getSheetByName('Chamados (Helpdesk)') || 
+                        ss.getSheetByName('Chamados');
+  if (!sheetChamados) {
+    Logger.log('Erro: Aba de Chamados não localizada na planilha.');
+    return;
+  }
 
   const dataAbertura = new Date();
+  const fusoHorario = Session.getScriptTimeZone() || 'GMT-3';
+  const dataHoraAberturaStr = Utilities.formatDate(dataAbertura, fusoHorario, 'dd/MM/yyyy HH:mm:ss');
+
   let nomeSolicitante = '';
   let emailSolicitante = '';
-  let setor = '';
-  let categoria = '';
-  let descricao = '';
-  let prioridade = 'Média';
+  let setor = 'Geral';
+  let categoria = '⚙️ Software, Sistemas & ERP';
+  let descricao = 'Sem descrição detalhada.';
+  let urgenciaBruta = 'Média';
 
-  // Se o gatilho fornecer e.namedValues (Google Form vinculado)
+  // 1. Mapeamento de campos vindos de e.namedValues (Google Forms vinculado)
   if (e && e.namedValues) {
-    nomeSolicitante = (e.namedValues['Nome Completo'] || e.namedValues['Nome'] || ['Colaborador'])[0];
-    emailSolicitante = (e.namedValues['E-mail'] || e.namedValues['Email'] || [''])[0];
-    setor = (e.namedValues['Setor'] || e.namedValues['Departamento'] || ['Geral'])[0];
-    categoria = (e.namedValues['Categoria do Problema'] || e.namedValues['Problema'] || ['⚙️ Outros'])[0];
-    descricao = (e.namedValues['Descrição Detalhada'] || e.namedValues['Descrição'] || ['Sem descrição'])[0];
-    prioridade = (e.namedValues['Prioridade Sugerida'] || ['Média'])[0];
+    const nv = e.namedValues;
+    nomeSolicitante = (nv['Nome Completo do Solicitante'] || nv['Nome Completo'] || nv['Nome'] || ['Colaborador'])[0];
+    emailSolicitante = (nv['E-mail Corporativo do Solicitante'] || nv['E-mail do Solicitante'] || nv['E-mail'] || nv['Email'] || [''])[0];
+    setor = (nv['Setor / Departamento'] || nv['Setor'] || nv['Departamento'] || ['Geral'])[0];
+    categoria = (nv['Categoria do Problema'] || nv['Categoria'] || nv['Problema'] || ['Outros'])[0];
+    descricao = (nv['Descrição Detalhada do Problema'] || nv['Descrição'] || nv['Descricao'] || [''])[0];
+    urgenciaBruta = (nv['Nível de Urgência / Impacto Percebido'] || nv['Urgência'] || nv['Prioridade Sugerida'] || ['Média'])[0];
   } else if (e && e.values) {
-    // Se vier do array simples de colunas
-    nomeSolicitante = e.values[1] || 'Colaborador';
-    emailSolicitante = e.values[2] || '';
+    // Array posicional caso o evento seja acionado por range simples
+    emailSolicitante = e.values[1] || '';
+    nomeSolicitante = e.values[2] || 'Colaborador';
     setor = e.values[3] || 'Geral';
-    categoria = e.values[4] || '⚙️ Outros';
+    categoria = e.values[4] || 'Outros';
     descricao = e.values[5] || '';
+    urgenciaBruta = e.values[6] || 'Média';
   }
 
-  // Define prioridade baseada na categoria caso o formulário não peça
-  if (categoria.includes('🔴') || categoria.toLowerCase().includes('internet')) {
-    prioridade = 'Alta';
-  } else if (categoria.includes('💻') || categoria.toLowerCase().includes('não liga')) {
-    prioridade = 'Alta';
+  // Se o formulário capturou o e-mail do respondente nativamente via Google Workspace
+  if (!emailSolicitante && e && e.response && typeof e.response.getRespondentEmail === 'function') {
+    emailSolicitante = e.response.getRespondentEmail() || '';
   }
 
-  // Gera ID Sequencial: CH-2026-0001
+  // 2. Extração de Prioridade e Cálculo Automático de SLA
+  let prioridade = 'Média';
+  let horasSla = 8;
+  const textoUrgencia = String(urgenciaBruta).toLowerCase();
+
+  if (textoUrgencia.includes('crític') || textoUrgencia.includes('critic') || textoUrgencia.includes('2h')) {
+    prioridade = 'Crítica';
+    horasSla = CONFIG.SLA_HORAS['Crítica'] || 2;
+  } else if (textoUrgencia.includes('alta') || textoUrgencia.includes('4h')) {
+    prioridade = 'Alta';
+    horasSla = CONFIG.SLA_HORAS['Alta'] || 4;
+  } else if (textoUrgencia.includes('baixa') || textoUrgencia.includes('24h')) {
+    prioridade = 'Baixa';
+    horasSla = CONFIG.SLA_HORAS['Baixa'] || 24;
+  } else {
+    prioridade = 'Média';
+    horasSla = CONFIG.SLA_HORAS['Média'] || 8;
+  }
+
+  const dataLimiteSla = new Date(dataAbertura.getTime() + horasSla * 60 * 60 * 1000);
+  const slaFormatado = horasSla + 'h (Até ' + Utilities.formatDate(dataLimiteSla, fusoHorario, 'dd/MM HH:mm') + ')';
+
+  // 3. Geração de Protocolo Único e Sequencial: CH-YYYY-XXXX (ex: CH-2026-0045)
   const ano = dataAbertura.getFullYear();
-  const ultimaLinha = sheetChamados.getLastRow();
-  const proximoNumero = ultimaLinha > 1 ? ultimaLinha : 1;
-  const idChamado = 'CH-' + ano + '-' + String(proximoNumero).padStart(4, '0');
+  const totalLinhas = sheetChamados.getLastRow();
+  const sequencial = totalLinhas > 1 ? (totalLinhas) : 1;
+  const idChamado = 'CH-' + ano + '-' + String(sequencial).padStart(4, '0');
 
-  // Grava o novo chamado na aba
-  // Colunas: ID, Data/Hora, Nome, E-mail, Setor, Categoria, Descrição, Prioridade, Técnico, Status, Observações, Data Fechamento, SLA
+  // 4. Normalização e Gravação dos Dados na Aba de Chamados
+  // Colunas: Protocolo, Data/Hora, Solicitante, Email, Setor, Categoria, Descrição, Prioridade, Status, SLA, Técnico Responsável
   sheetChamados.appendRow([
     idChamado,
-    Utilities.formatDate(dataAbertura, Session.getScriptTimeZone(), 'dd/MM/yyyy HH:mm:ss'),
-    nomeSolicitante,
-    emailSolicitante,
-    setor,
-    categoria,
-    descricao,
+    dataHoraAberturaStr,
+    nomeSolicitante.trim(),
+    emailSolicitante.trim(),
+    setor.trim(),
+    categoria.trim(),
+    descricao.trim(),
     prioridade,
-    '', // Técnico Responsável inicial em branco
     'Aberto',
-    'Chamado aberto via Google Forms.',
-    '', // Data de Fechamento
-    'Dentro do Prazo'
+    slaFormatado,
+    'Sem Técnico'
   ]);
 
-  // Envia e-mail de confirmação imediato para o solicitante
-  if (emailSolicitante && emailSolicitante.includes('@')) {
-    enviarEmailConfirmacaoAbertura({
-      idChamado,
-      nomeSolicitante,
-      emailSolicitante,
-      categoria,
-      prioridade,
-      dataAbertura
-    });
+  Logger.log('Chamado gerado com sucesso: ' + idChamado + ' para ' + nomeSolicitante + ' (' + emailSolicitante + ')');
+
+  // 5. Envio de Notificação Automática por E-mail ao Solicitante
+  if (emailSolicitante && emailSolicitante.indexOf('@') !== -1) {
+    try {
+      enviarEmailConfirmacaoAbertura({
+        idChamado: idChamado,
+        nomeSolicitante: nomeSolicitante,
+        emailSolicitante: emailSolicitante,
+        categoria: categoria,
+        prioridade: prioridade,
+        tempoSla: horasSla + ' horas',
+        dataAbertura: dataHoraAberturaStr
+      });
+    } catch (errEmail) {
+      Logger.log('Aviso: Não foi possível enviar e-mail ao solicitante: ' + errEmail);
+    }
   }
+
+  return idChamado;
+}
+
+/**
+ * Sincroniza em lote todas as respostas pendentes da aba 'Respostas ao formulário 1'
+ * para a aba principal 'Chamados (Helpdesk)'.
+ */
+function sincronizarRespostasForms() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheetRespostas = ss.getSheetByName('Respostas ao formulário 1') || 
+                         ss.getSheetByName('Respostas ao formulário') ||
+                         ss.getSheetByName('Form Responses 1');
+  const sheetChamados = ss.getSheetByName(CONFIG.NOMES_ABAS.CHAMADOS) || 
+                        ss.getSheetByName('Chamados (Helpdesk)') || 
+                        ss.getSheetByName('Chamados');
+
+  if (!sheetRespostas || !sheetChamados) {
+    Logger.log('Abas necessárias não encontradas.');
+    return;
+  }
+
+  const dadosRespostas = sheetRespostas.getDataRange().getValues();
+  if (dadosRespostas.length <= 1) return;
+
+  const dadosChamados = sheetChamados.getDataRange().getValues();
+  const assinaturasExistentes = {};
+
+  for (let i = 1; i < dadosChamados.length; i++) {
+    const dataH = String(dadosChamados[i][1] || '').trim();
+    const em = String(dadosChamados[i][3] || '').trim().toLowerCase();
+    assinaturasExistentes[dataH + '_' + em] = true;
+  }
+
+  let totalImportados = 0;
+  const ano = new Date().getFullYear();
+
+  for (let r = 1; r < dadosRespostas.length; r++) {
+    const row = dadosRespostas[r];
+    const dataH = Utilities.formatDate(new Date(row[0] || new Date()), Session.getScriptTimeZone() || 'GMT-3', 'dd/MM/yyyy HH:mm:ss');
+    const nome = String(row[1] || 'Colaborador').trim();
+    const email = String(row[2] || '').trim();
+    const setor = String(row[3] || 'TI').trim();
+    const cat = String(row[4] || 'Outros').trim();
+    const desc = String(row[5] || '').trim();
+    const urg = String(row[6] || 'Média').trim();
+
+    if (assinaturasExistentes[dataH + '_' + email.toLowerCase()]) continue;
+
+    const sequencial = sheetChamados.getLastRow();
+    const idChamado = 'CH-' + ano + '-' + String(sequencial).padStart(4, '0');
+
+    sheetChamados.appendRow([
+      idChamado,
+      dataH,
+      nome,
+      email,
+      setor,
+      cat,
+      desc,
+      urg,
+      'Aberto',
+      'Dentro do Prazo',
+      'Sem Técnico'
+    ]);
+
+    assinaturasExistentes[dataH + '_' + email.toLowerCase()] = true;
+    totalImportados++;
+  }
+
+  Logger.log('Sincronização concluída: ' + totalImportados + ' novos chamados importados do Forms.');
+  return totalImportados;
 }
 
 // ============================================================================
@@ -901,6 +1015,10 @@ function enviarEmailConfirmacaoAbertura(dados) {
               <td style="padding: 6px 0;"><strong>\${dados.prioridade}</strong></td>
             </tr>
             <tr>
+              <td style="padding: 6px 0; color: #64748b;">Prazo Estimado (SLA):</td>
+              <td style="padding: 6px 0; color: #2563eb; font-weight: bold;">\${dados.tempoSla || 'Conforme a prioridade selecionada'}</td>
+            </tr>
+            <tr>
               <td style="padding: 6px 0; color: #64748b;">Status Inicial:</td>
               <td style="padding: 6px 0;"><span style="background: #e0f2fe; color: #0369a1; padding: 2px 8px; border-radius: 4px; font-weight: bold;">Aberto</span></td>
             </tr>
@@ -1116,10 +1234,10 @@ function formatarCabecalho(aba, corFundoHex, colunas) {
 
 function inserirDadosIniciais(abaChamados, abaFunc, abaInv, abaMov) {
   // Dados de Funcionários: Nome do Colaborador, Email, Setor, Status, Equipamentos Alocados
-  abaFunc.appendRow(['Mariana Souza', 'mariana.souza@empresa.com', 'Financeiro', 'Ativo', 'PAT-1001']);
-  abaFunc.appendRow(['Carlos Eduardo', 'carlos.eduardo@empresa.com', 'Marketing', 'Ativo', 'PAT-1002, PAT-1003']);
-  abaFunc.appendRow(['Fernanda Lima', 'fernanda.lima@empresa.com', 'Comercial', 'Ativo', 'Nenhum']);
-  abaFunc.appendRow(['Lucas Oliveira', 'lucas.oliveira@empresa.com', 'Engenharia', 'Ativo', 'Nenhum']);
+  abaFunc.appendRow(['Mariana Souza', 'mariana.souza@empresa.com', 'FINANCEIRO', 'Ativo', 'PAT-1001']);
+  abaFunc.appendRow(['Carlos Eduardo', 'carlos.eduardo@empresa.com', 'GCOM', 'Ativo', 'PAT-1002, PAT-1003']);
+  abaFunc.appendRow(['Fernanda Lima', 'fernanda.lima@empresa.com', 'GADM', 'Ativo', 'Nenhum']);
+  abaFunc.appendRow(['Lucas Oliveira', 'lucas.oliveira@empresa.com', 'TI', 'Ativo', 'Nenhum']);
 
   // Dados de Equipamentos (Inventário): Património, Tipo, Marca & Modelo, Nº de Série, Status, Colaborador Alocado
   abaInv.appendRow(['PAT-1001', 'Notebook', 'Dell Latitude 3420 i7 16GB', 'DELL-SN-89211', 'Em uso', 'Mariana Souza']);
@@ -1139,7 +1257,7 @@ function inserirDadosIniciais(abaChamados, abaFunc, abaInv, abaMov) {
     '04/11/2026 08:30:00',
     'Mariana Souza',
     'mariana.souza@empresa.com',
-    'Financeiro',
+    'FINANCEIRO',
     '🔴 Sem internet / Rede',
     'Cabo de rede não conecta ao switch da baia 4. Não consigo acessar o ERP.',
     'Alta',
@@ -1153,7 +1271,7 @@ function inserirDadosIniciais(abaChamados, abaFunc, abaInv, abaMov) {
     '04/11/2026 09:15:00',
     'Fernanda Lima',
     'fernanda.lima@empresa.com',
-    'Comercial',
+    'GADM',
     '💻 Computador não liga / Tela preta',
     'Notebook desligou durante apresentação com cliente e não dá mais sinal de energia.',
     'Crítica',
@@ -1326,12 +1444,34 @@ export const INDEX_HTML = `<!DOCTYPE html>
 
       <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm space-y-3">
         <label class="block text-xs font-semibold text-slate-700">Selecione o Setor da Empresa</label>
-        <div class="flex flex-wrap gap-2">
-          <button onclick="selecionarSetor('Financeiro')" class="px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-blue-600 text-white shadow-sm">Financeiro</button>
-          <button onclick="selecionarSetor('Design & UX')" class="px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700">Design & UX</button>
-          <button onclick="selecionarSetor('Comercial')" class="px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700">Comercial</button>
-          <button onclick="selecionarSetor('Engenharia')" class="px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700">Engenharia</button>
-          <button onclick="selecionarSetor('RH & People')" class="px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700">RH & People</button>
+        <div class="flex flex-wrap gap-2 max-h-48 overflow-y-auto p-1">
+          <button onclick="selecionarSetor('FINANCEIRO')" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-blue-600 text-white shadow-sm">FINANCEIRO</button>
+          <button onclick="selecionarSetor('RH')" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700">RH</button>
+          <button onclick="selecionarSetor('TI')" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700">TI</button>
+          <button onclick="selecionarSetor('GCOM')" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700">GCOM</button>
+          <button onclick="selecionarSetor('GADM')" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700">GADM</button>
+          <button onclick="selecionarSetor('OBIC')" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700">OBIC</button>
+          <button onclick="selecionarSetor('GPAI')" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700">GPAI</button>
+          <button onclick="selecionarSetor('SECEXECC')" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700">SECEXECC</button>
+          <button onclick="selecionarSetor('PLAN')" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700">PLAN</button>
+          <button onclick="selecionarSetor('OUVIDORIA')" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700">OUVIDORIA</button>
+          <button onclick="selecionarSetor('GTEC')" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700">GTEC</button>
+          <button onclick="selecionarSetor('GEDH')" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700">GEDH</button>
+          <button onclick="selecionarSetor('GPC')" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700">GPC</button>
+          <button onclick="selecionarSetor('FOMENTO')" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700">FOMENTO</button>
+          <button onclick="selecionarSetor('CPECV')" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700">CPECV</button>
+          <button onclick="selecionarSetor('CPAD')" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700">CPAD</button>
+          <button onclick="selecionarSetor('PRESTAÇÃO DE CONTAS')" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700">PRESTAÇÃO DE CONTAS</button>
+          <button onclick="selecionarSetor('PATRIMONIO')" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700">PATRIMONIO</button>
+          <button onclick="selecionarSetor('JURIDICO')" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700">JURIDICO</button>
+          <button onclick="selecionarSetor('SECEXECG')" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700">SECEXECG</button>
+          <button onclick="selecionarSetor('GABINETE')" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700">GABINETE</button>
+          <button onclick="selecionarSetor('MAPA CULTURAL')" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700">MAPA CULTURAL</button>
+          <button onclick="selecionarSetor('GCICO')" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700">GCICO</button>
+          <button onclick="selecionarSetor('ARQUITETURA')" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700">ARQUITETURA</button>
+          <button onclick="selecionarSetor('COMED')" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700">COMED</button>
+          <button onclick="selecionarSetor('GPE')" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700">GPE</button>
+          <button onclick="selecionarSetor('CASA DOS CONSELHOS')" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700">CASA DOS CONSELHOS</button>
         </div>
       </div>
 
@@ -1555,7 +1695,7 @@ Siga este passo a passo para colocar o sistema em produção na sua organizaçã
 2. Crie as seguintes perguntas no formulário:
    - **Nome Completo** (Resposta curta - Obrigatório)
    - **E-mail** (Resposta curta - Obrigatório)
-   - **Setor / Departamento** (Lista suspensa: Financeiro, RH, Comercial, TI, Operações, Marketing)
+   - **Setor / Departamento** (Lista suspensa contendo os 27 setores da empresa)
    - **Categoria do Problema** (Múltipla escolha com ícones amigáveis):
      - 🔴 Sem internet / Rede
      - 🖨️ Impressora não funciona
@@ -1590,4 +1730,146 @@ Siga este passo a passo para colocar o sistema em produção na sua organizaçã
    - **Quem tem acesso**: \`Qualquer pessoa na sua organização\`
 4. Clique em **Implantar**.
 5. Copie a **URL do Aplicativo da Web**: essa é a URL oficial que os técnicos usarão no navegador!
+`;
+
+export const CRIAR_FORMULARIO_GS = `/**
+ * @file Criar_Formulario.gs
+ * @description Gerador automatizado do Google Form oficial de Abertura de Chamados DeskOps TI
+ * Cria o formulário oficial com as 6 perguntas obrigatórias, vincula à planilha ativa como destino
+ * e configura o gatilho onFormSubmit automaticamente.
+ * 
+ * Para executar:
+ * 1. Abra o Apps Script na sua planilha (Extensões > Apps Script)
+ * 2. Crie um novo arquivo de script chamado 'Criar_Formulario.gs'
+ * 3. Cole este código, selecione a função 'criarFormularioOficialChamados' e clique em Executar.
+ */
+
+function criarFormularioOficialChamados() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  
+  // 1. Cria o formulário no Google Drive
+  const form = FormApp.create('DeskOps TI - Abertura de Chamado');
+  form.setTitle('DeskOps TI - Abertura de Chamado');
+  form.setDescription('Canal oficial de atendimento e suporte técnico da empresa. Ao submeter este formulário, um protocolo único (CH-YYYY-XXXX) será gerado automaticamente com cálculo de SLA e enviado ao seu e-mail corporativo.');
+  
+  form.setCollectEmail(true);
+  form.setAllowResponseEdits(false);
+  form.setLimitOneResponsePerUser(false);
+
+  // 1. Nome Completo do Solicitante (Texto curto)
+  const itemNome = form.addTextItem();
+  itemNome.setTitle('Nome Completo');
+  itemNome.setHelpText('Informe seu nome e sobrenome.');
+  itemNome.setRequired(true);
+
+  // 2. E-mail do Solicitante (Texto curto)
+  const itemEmail = form.addTextItem();
+  itemEmail.setTitle('E-mail do Solicitante');
+  itemEmail.setHelpText('Seu e-mail corporativo para recebimento do protocolo e acompanhamento.');
+  itemEmail.setRequired(true);
+
+  // 3. Setor / Departamento (Lista suspensa)
+  const itemSetor = form.addListItem();
+  itemSetor.setTitle('Setor / Departamento');
+  itemSetor.setHelpText('Selecione a sua área ou departamento de trabalho.');
+  itemSetor.setChoiceValues([
+    'OBIC',
+    'RH',
+    'GPAI',
+    'SECEXECC',
+    'GCOM',
+    'PLAN',
+    'OUVIDORIA',
+    'GTEC',
+    'GEDH',
+    'GPC',
+    'FOMENTO',
+    'TI',
+    'CPECV',
+    'CPAD',
+    'PRESTAÇÃO DE CONTAS',
+    'PATRIMONIO',
+    'JURIDICO',
+    'FINANCEIRO',
+    'SECEXECG',
+    'GABINETE',
+    'GADM',
+    'MAPA CULTURAL',
+    'GCICO',
+    'ARQUITETURA',
+    'COMED',
+    'GPE',
+    'CASA DOS CONSELHOS'
+  ]);
+  itemSetor.setRequired(true);
+
+  // 4. Categoria do Problema (Lista suspensa)
+  const itemCat = form.addListItem();
+  itemCat.setTitle('Categoria do Problema');
+  itemCat.setHelpText('Selecione o tipo de incidente para direcionamento correto.');
+  itemCat.setChoiceValues([
+    '💻 Hardware (Computador, Notebook, Monitor, Periféricos)',
+    '🌐 Redes / Internet / Wi-Fi',
+    '🔐 Acessos, Senhas & Permissões',
+    '🖨️ Impressoras & Digitalização',
+    '⚙️ Software, Sistemas & ERP',
+    '📦 Outros Assuntos'
+  ]);
+  itemCat.setRequired(true);
+
+  // 5. Descrição Detalhada do Problema (Texto longo)
+  const itemDesc = form.addParagraphTextItem();
+  itemDesc.setTitle('Descrição Detalhada do Problema');
+  itemDesc.setHelpText('Explique detalhadamente o que aconteceu, mensagens de erro que apareceram e o que você estava tentando fazer.');
+  itemDesc.setRequired(true);
+
+  // 6. Nível de Urgência / Impacto Percebido (Múltipla escolha)
+  const itemUrg = form.addMultipleChoiceItem();
+  itemUrg.setTitle('Nível de Urgência / Impacto Percebido');
+  itemUrg.setHelpText('Defina o impacto deste problema em seu trabalho. Isso calculará o SLA de atendimento.');
+  itemUrg.setChoiceValues([
+    'Baixa (Até 24h - Dúvida geral ou problema pontual sem parada de trabalho)',
+    'Média (Até 8h - Trabalho prejudicado, porém há alternativas temporárias)',
+    'Alta (Até 4h - Máquina ou sistema indispensável parado para um colaborador)',
+    'Crítica (Até 2h - Parada total de um departamento, servidor ou diretoria)'
+  ]);
+  itemUrg.setRequired(true);
+
+  // 2. VINCULAR O FORMULÁRIO À PLANILHA ATIVA COMO DESTINO DE RESPOSTAS
+  form.setDestination(FormApp.DestinationType.SPREADSHEET, ss.getId());
+
+  // 3. CONFIGURAR GATILHO AUTOMÁTICO onFormSubmit SE NÃO EXISTIR
+  const triggers = ScriptApp.getUserTriggers(ss);
+  let triggerExiste = false;
+  for (let i = 0; i < triggers.length; i++) {
+    if (triggers[i].getHandlerFunction() === 'onFormSubmit') {
+      triggerExiste = true;
+      break;
+    }
+  }
+
+  if (!triggerExiste) {
+    ScriptApp.newTrigger('onFormSubmit')
+      .forSpreadsheet(ss)
+      .onFormSubmit()
+      .create();
+    Logger.log('Gatilho onFormSubmit instalado com sucesso!');
+  }
+
+  const urlPublica = form.getPublishedUrl();
+  const urlEdicao = form.getEditUrl();
+
+  Logger.log('====================================================');
+  Logger.log('FORMULÁRIO GOOGLE CRIADO COM SUCESSO!');
+  Logger.log('Link para os funcionários responderem: ' + urlPublica);
+  Logger.log('Link para o administrador editar: ' + urlEdicao);
+  Logger.log('====================================================');
+
+  ss.toast('Google Form criado e vinculado à planilha! Respostas cairão automaticamente no DeskOps.', 'Sucesso', 10);
+  
+  return {
+    urlPublica: urlPublica,
+    urlEdicao: urlEdicao
+  };
+}
 `;

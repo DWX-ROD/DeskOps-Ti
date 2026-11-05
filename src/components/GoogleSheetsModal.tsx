@@ -103,7 +103,12 @@ export const GoogleSheetsModal: React.FC<GoogleSheetsModalProps> = ({
         setPlanilhasDrive(files);
       }
     } catch (err: any) {
-      setMensagemErro(err?.message || 'Falha ao autenticar com o Google.');
+      if (
+        err?.code !== 'auth/popup-closed-by-user' && 
+        err?.code !== 'auth/cancelled-popup-request'
+      ) {
+        setMensagemErro(err?.message || 'Falha ao autenticar com o Google.');
+      }
     } finally {
       setLoadingLogin(false);
     }
@@ -338,6 +343,10 @@ export const GoogleSheetsModal: React.FC<GoogleSheetsModalProps> = ({
                   </svg>
                   <span>{loadingLogin ? 'Conectando ao Google...' : 'Fazer Login com Google'}</span>
                 </button>
+
+                <p className="text-[11px] text-slate-400 dark:text-slate-500">
+                  💡 Caso a janela de login não apareça ou seja fechada, verifique se o navegador não está bloqueando janelas pop-up para este site.
+                </p>
               </div>
             )}
           </div>
