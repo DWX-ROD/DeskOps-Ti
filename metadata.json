@@ -1,0 +1,6 @@
+{
+  "name": "DeskOps TI - Helpdesk e Inventário Google Workspace",
+  "description": "Sistema completo de Helpdesk, Gestão de TI e Inventário desenvolvido para Google Apps Script, Google Sheets e Google Forms com painel para técnicos e portal para colaboradores.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
