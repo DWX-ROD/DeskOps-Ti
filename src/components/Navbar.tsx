@@ -11,7 +11,8 @@ import {
   ChevronDown, 
   Moon, 
   Sun,
-  Layers
+  Layers,
+  FileSpreadsheet
 } from 'lucide-react';
 import { Tecnico } from '../types';
 import { LISTA_TECNICOS_DISPONIVEIS } from '../data/initialData';
@@ -34,6 +35,8 @@ interface NavbarProps {
   slaCriticoCount: number;
   darkMode: boolean;
   setDarkMode: (val: boolean) => void;
+  isSheetsConnected?: boolean;
+  onOpenSheetsModal: () => void;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -44,7 +47,9 @@ export const Navbar: React.FC<NavbarProps> = ({
   chamadosAbertosCount,
   slaCriticoCount,
   darkMode,
-  setDarkMode
+  setDarkMode,
+  isSheetsConnected = false,
+  onOpenSheetsModal
 }) => {
   const [showTecnicoDropdown, setShowTecnicoDropdown] = useState(false);
 
@@ -169,7 +174,26 @@ export const Navbar: React.FC<NavbarProps> = ({
           </nav>
 
           {/* Right Actions: Session Identity & Theme */}
-          <div className="flex items-center gap-3 shrink-0">
+          <div className="flex items-center gap-2.5 shrink-0">
+
+            {/* Google Sheets Trigger Button */}
+            <button
+              onClick={onOpenSheetsModal}
+              className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border text-xs font-medium transition ${
+                isSheetsConnected
+                  ? 'bg-emerald-950/60 hover:bg-emerald-900/60 text-emerald-300 border-emerald-700/60'
+                  : 'bg-slate-800/80 hover:bg-slate-800 text-slate-300 border-slate-700'
+              }`}
+              title={isSheetsConnected ? 'Google Sheets Conectado (Clique para gerenciar)' : 'Conectar Planilha Google Sheets'}
+            >
+              <FileSpreadsheet className="w-4 h-4 text-emerald-400" />
+              <span className="hidden sm:inline">Google Sheets</span>
+              {isSheetsConnected ? (
+                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+              ) : (
+                <span className="text-[10px] text-slate-400 hidden md:inline">Desconectado</span>
+              )}
+            </button>
             
             {/* Technician Session Selector */}
             <div className="relative">

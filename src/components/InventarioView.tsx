@@ -11,7 +11,12 @@ import {
   Filter,
   X,
   ShieldCheck,
-  Check
+  Check,
+  Edit2,
+  Trash2,
+  Lock,
+  ShieldAlert,
+  AlertTriangle
 } from 'lucide-react';
 import { Equipamento, Funcionario, Movimentacao, Tecnico, TipoEquipamento, StatusEquipamento } from '../types';
 
@@ -23,7 +28,9 @@ interface InventarioViewProps {
   onAtribuirEquipamento: (idEquipamento: string, idFuncionario: string, observacoes: string) => void;
   onDevolverEquipamento: (idEquipamento: string, observacoes: string) => void;
   onEnviarManutencao: (idEquipamento: string, motivo: string) => void;
-  onCadastrarEquipamento: (equipamento: Omit<Equipamento, 'dataUltimaMovimentacao'>) => void;
+  onCadastrarEquipamento: (equipamento: Omit<Equipamento, 'dataUltimaMovimentacao'>) => boolean;
+  onEditarEquipamento: (equipamento: Equipamento) => boolean;
+  onRemoverEquipamento: (idEquipamento: string) => boolean;
 }
 
 export const InventarioView: React.FC<InventarioViewProps> = ({
@@ -34,8 +41,12 @@ export const InventarioView: React.FC<InventarioViewProps> = ({
   onAtribuirEquipamento,
   onDevolverEquipamento,
   onEnviarManutencao,
-  onCadastrarEquipamento
+  onCadastrarEquipamento,
+  onEditarEquipamento,
+  onRemoverEquipamento
 }) => {
+  const isAdmin = tecnicoAtivo.papel === 'admin';
+
   const [subAba, setSubAba] = useState<'ativos' | 'movimentacoes'>('ativos');
   const [termoBusca, setTermoBusca] = useState<string>('');
   const [filtroTipo, setFiltroTipo] = useState<string>('todos');
@@ -52,8 +63,18 @@ export const InventarioView: React.FC<InventarioViewProps> = ({
   const [novaMarcaModelo, setNovaMarcaModelo] = useState<string>('');
   const [novoNumSerie, setNovoNumSerie] = useState<string>('');
 
+  // Modal Edição (Admin)
+  const [modalEditar, setModalEditar] = useState<Equipamento | null>(null);
+  const [editTipo, setEditTipo] = useState<TipoEquipamento>('Notebook');
+  const [editMarcaModelo, setEditMarcaModelo] = useState<string>('');
+  const [editNumSerie, setEditNumSerie] = useState<string>('');
+  const [editStatus, setEditStatus] = useState<StatusEquipamento>('Disponível');
+  const [editFuncionarioAlocado, setEditFuncionarioAlocado] = useState<string>('');
+
   const [modalManutencao, setModalManutencao] = useState<Equipamento | null>(null);
   const [motivoManutencao, setMotivoManutencao] = useState<string>('');
+
+  const [modalAcessoNegado, setModalAcessoNegado] = useState<string | null>(null);
 
   // Metrics
   const totalEquipamentos = equipamentos.length;
@@ -98,23 +119,83 @@ export const InventarioView: React.FC<InventarioViewProps> = ({
   };
 
   const handleSalvarNovoAtivo = () => {
+    if (!isAdmin) {
+      setModalAcessoNegado('Apenas e-mails com papel de Administrador têm permissão para cadastrar novos ativos no inventário.');
+      return;
+    }
     if (!novaMarcaModelo.trim() || !novoNumSerie.trim()) {
       alert('Preencha marca/modelo e número de série.');
       return;
     }
     const idFinal = novoId.trim() || `PAT-${Math.floor(1000 + Math.random() * 9000)}`;
-    onCadastrarEquipamento({
+    const sucesso = onCadastrarEquipamento({
       id: idFinal,
       tipo: novoTipo,
-      marcaModelo: novaMarcaModelo,
-      numSerie: novoNumSerie,
+      marcaModelo: novaMarcaModelo.trim(),
+      numSerie: novoNumSerie.trim(),
       status: 'Disponível',
       funcionarioAlocado: null
     });
-    setModalNovoAtivo(false);
-    setNovoId('');
-    setNovaMarcaModelo('');
-    setNovoNumSerie('');
+    if (sucesso) {
+      setModalNovoAtivo(false);
+      setNovoId('');
+      setNovaMarcaModelo('');
+      setNovoNumSerie('');
+    }
+  };
+
+  const handleAbrirEdicao = (eq: Equipamento) => {
+    if (!isAdmin) {
+      setModalAcessoNegado('Apenas e-mails autenticados como Administrador podem editar dados de equipamentos do inventário.');
+      return;
+    }
+    setModalEditar(eq);
+    setEditTipo(eq.tipo);
+    setEditMarcaModelo(eq.marcaModelo);
+    setEditNumSerie(eq.numSerie);
+    setEditStatus(eq.status);
+    setEditFuncionarioAlocado(eq.funcionarioAlocado || '');
+  };
+
+  const handleConfirmarEdicao = () => {
+    if (!isAdmin || !modalEditar) return;
+    if (!editMarcaModelo.trim() || !editNumSerie.trim()) {
+      alert('Marca/Modelo e Número de Série são obrigatórios.');
+      return;
+    }
+
+    const eqAtualizado: Equipamento = {
+      ...modalEditar,
+      tipo: editTipo,
+      marcaModelo: editMarcaModelo.trim(),
+      numSerie: editNumSerie.trim(),
+      status: editStatus,
+      funcionarioAlocado: editStatus === 'Em Uso' ? (editFuncionarioAlocado || null) : null
+    };
+
+    const sucesso = onEditarEquipamento(eqAtualizado);
+    if (sucesso) {
+      setModalEditar(null);
+    }
+  };
+
+  const handleRemoverEquipamentoClick = (eq: Equipamento) => {
+    if (!isAdmin) {
+      setModalAcessoNegado('Apenas e-mails autenticados como Administrador podem remover equipamentos do inventário.');
+      return;
+    }
+
+    if (eq.status === 'Em Uso' && eq.funcionarioAlocado) {
+      if (!confirm(`Atenção: O equipamento ${eq.id} (${eq.marcaModelo}) está atualmente em uso por "${eq.funcionarioAlocado}". Confirma a remoção definitiva do inventário?`)) {
+        return;
+      }
+    } else {
+      if (!confirm(`Deseja realmente remover o equipamento ${eq.id} (${eq.marcaModelo}) do inventário?`)) {
+        return;
+      }
+    }
+
+    onRemoverEquipamento(eq.id);
   };
 
   return (
@@ -123,18 +204,42 @@ export const InventarioView: React.FC<InventarioViewProps> = ({
       {/* Top Header */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100 font-display">
-            Inventário & Movimentações de TI
-          </h1>
-          <p className="text-sm text-slate-500 dark:text-slate-400">
-            Controle de máquinas e periféricos com atribuição automatizada e histórico de rastreabilidade na aba Movimentações.
+          <div className="flex items-center gap-2">
+            <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100 font-display">
+              Inventário & Movimentações de TI
+            </h1>
+            {isAdmin ? (
+              <span className="px-2 py-0.5 rounded text-[11px] font-bold bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-500/30 flex items-center gap-1">
+                <ShieldCheck className="w-3.5 h-3.5" />
+                <span>Admin Editável</span>
+              </span>
+            ) : (
+              <span className="px-2 py-0.5 rounded text-[11px] font-medium bg-slate-100 dark:bg-slate-800 text-slate-500 border border-slate-200 dark:border-slate-700 flex items-center gap-1">
+                <Lock className="w-3.5 h-3.5" />
+                <span>Modo Técnico (Leitura)</span>
+              </span>
+            )}
+          </div>
+          <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
+            Controle de máquinas e periféricos: cadastro, edição e exclusão de equipamentos liberados para <strong>Administradores</strong>.
           </p>
         </div>
 
         <div className="flex items-center gap-2">
           <button
-            onClick={() => setModalNovoAtivo(true)}
-            className="flex items-center gap-2 px-3.5 py-2 text-xs font-semibold rounded-lg bg-blue-600 hover:bg-blue-700 text-white shadow-sm transition"
+            onClick={() => {
+              if (!isAdmin) {
+                setModalAcessoNegado('Apenas e-mails com papel de Administrador têm autorização para cadastrar novos equipamentos no inventário.');
+                return;
+              }
+              setModalNovoAtivo(true);
+            }}
+            className={`flex items-center gap-2 px-3.5 py-2 text-xs font-semibold rounded-lg shadow-sm transition ${
+              isAdmin
+                ? 'bg-blue-600 hover:bg-blue-700 text-white'
+                : 'bg-slate-200 dark:bg-slate-800 text-slate-400 cursor-not-allowed'
+            }`}
+            title={isAdmin ? 'Cadastrar novo equipamento no inventário' : 'Ação restrita a administradores'}
           >
             <Plus className="w-4 h-4" />
             <span>Cadastrar Equipamento</span>
@@ -296,7 +401,7 @@ export const InventarioView: React.FC<InventarioViewProps> = ({
                       return (
                         <tr 
                           key={eq.id}
-                          className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors"
+                          className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors group"
                         >
                           <td className="py-3.5 px-4 font-mono font-bold text-slate-900 dark:text-slate-100 whitespace-nowrap">
                             {eq.id}
@@ -377,6 +482,27 @@ export const InventarioView: React.FC<InventarioViewProps> = ({
                                 >
                                   <Wrench className="w-3.5 h-3.5" />
                                 </button>
+                              )}
+
+                              {/* BOTÕES EXCLUSIVOS DO ADMIN: EDITAR E REMOVER */}
+                              {isAdmin && (
+                                <>
+                                  <button
+                                    onClick={() => handleAbrirEdicao(eq)}
+                                    className="p-1.5 rounded-lg text-slate-500 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950/40 text-xs transition"
+                                    title="Editar detalhes do equipamento (Exclusivo Administrador)"
+                                  >
+                                    <Edit2 className="w-3.5 h-3.5" />
+                                  </button>
+
+                                  <button
+                                    onClick={() => handleRemoverEquipamentoClick(eq)}
+                                    className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/40 text-xs transition"
+                                    title="Remover/Excluir equipamento do inventário (Exclusivo Administrador)"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                </>
                               )}
                             </div>
                           </td>
@@ -536,6 +662,131 @@ export const InventarioView: React.FC<InventarioViewProps> = ({
         </div>
       )}
 
+      {/* MODAL: EDITAR EQUIPAMENTO (ADMIN) */}
+      {modalEditar && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200 dark:border-slate-800">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
+              <div className="flex items-center gap-2">
+                <span className="p-1 rounded-md bg-blue-100 dark:bg-blue-950 text-blue-600">
+                  <Edit2 className="w-4 h-4" />
+                </span>
+                <div>
+                  <h3 className="text-base font-bold text-slate-900 dark:text-slate-100 font-display">
+                    Editar Equipamento ({modalEditar.id})
+                  </h3>
+                  <span className="text-[10px] text-amber-600 dark:text-amber-400 font-medium">Exclusivo Administrador</span>
+                </div>
+              </div>
+              <button onClick={() => setModalEditar(null)} className="text-slate-400 hover:text-slate-600">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="py-4 space-y-3">
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                  Tipo de Equipamento
+                </label>
+                <select
+                  value={editTipo}
+                  onChange={(e) => setEditTipo(e.target.value as TipoEquipamento)}
+                  className="w-full text-xs p-2.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100"
+                >
+                  <option value="Notebook">Notebook</option>
+                  <option value="Desktop">Desktop</option>
+                  <option value="Monitor">Monitor</option>
+                  <option value="Impressora">Impressora</option>
+                  <option value="Periférico">Periférico</option>
+                  <option value="Servidor / Rede">Servidor / Rede</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                  Marca & Modelo <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={editMarcaModelo}
+                  onChange={(e) => setEditMarcaModelo(e.target.value)}
+                  className="w-full text-xs p-2.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                  Número de Série / Service Tag <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={editNumSerie}
+                  onChange={(e) => setEditNumSerie(e.target.value)}
+                  className="w-full text-xs p-2.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                  Status do Equipamento
+                </label>
+                <select
+                  value={editStatus}
+                  onChange={(e) => {
+                    const st = e.target.value as StatusEquipamento;
+                    setEditStatus(st);
+                    if (st !== 'Em Uso') {
+                      setEditFuncionarioAlocado('');
+                    }
+                  }}
+                  className="w-full text-xs p-2.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100"
+                >
+                  <option value="Disponível">Disponível</option>
+                  <option value="Em Uso">Em Uso</option>
+                  <option value="Em Manutenção">Em Manutenção</option>
+                  <option value="Descartado">Descartado</option>
+                </select>
+              </div>
+
+              {editStatus === 'Em Uso' && (
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                    Funcionário Alocado
+                  </label>
+                  <select
+                    value={editFuncionarioAlocado}
+                    onChange={(e) => setEditFuncionarioAlocado(e.target.value)}
+                    className="w-full text-xs p-2.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100"
+                  >
+                    <option value="">Selecione um funcionário...</option>
+                    {funcionarios.map((f) => (
+                      <option key={f.id} value={f.nomeCompleto}>
+                        {f.nomeCompleto} ({f.setor})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100 dark:border-slate-800">
+              <button
+                onClick={() => setModalEditar(null)}
+                className="px-4 py-2 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleConfirmarEdicao}
+                className="px-4 py-2 text-xs font-semibold bg-blue-600 hover:bg-blue-700 text-white rounded-lg shadow-sm transition"
+              >
+                Salvar Alterações
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* MODAL: ENVIAR PARA MANUTENÇÃO */}
       {modalManutencao && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
@@ -587,14 +838,17 @@ export const InventarioView: React.FC<InventarioViewProps> = ({
         </div>
       )}
 
-      {/* MODAL: NOVO EQUIPAMENTO */}
+      {/* MODAL: NOVO EQUIPAMENTO (ADMIN) */}
       {modalNovoAtivo && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white dark:bg-slate-900 rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200 dark:border-slate-800">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
-              <h3 className="text-lg font-bold text-slate-900 dark:text-slate-100 font-display">
-                Cadastrar Novo Ativo de TI
-              </h3>
+              <div>
+                <h3 className="text-lg font-bold text-slate-900 dark:text-slate-100 font-display">
+                  Cadastrar Novo Ativo de TI
+                </h3>
+                <span className="text-[10px] text-amber-600 dark:text-amber-400 font-medium">Exclusivo Administrador</span>
+              </div>
               <button onClick={() => setModalNovoAtivo(false)} className="text-slate-400 hover:text-slate-600">
                 <X className="w-5 h-5" />
               </button>
@@ -671,6 +925,31 @@ export const InventarioView: React.FC<InventarioViewProps> = ({
                 className="px-4 py-2 text-xs font-semibold bg-blue-600 hover:bg-blue-700 text-white rounded-lg shadow-sm transition"
               >
                 Salvar Equipamento
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: ACESSO NEGADO / RESTRITO */}
+      {modalAcessoNegado && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl max-w-md w-full p-6 shadow-2xl border border-red-200 dark:border-red-900 text-center space-y-3">
+            <div className="w-12 h-12 rounded-full bg-red-100 dark:bg-red-950/60 text-red-600 dark:text-red-400 flex items-center justify-center mx-auto">
+              <ShieldAlert className="w-6 h-6" />
+            </div>
+            <h3 className="text-base font-bold text-slate-900 dark:text-slate-100">
+              Permissão Restrita a Administradores
+            </h3>
+            <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
+              {modalAcessoNegado}
+            </p>
+            <div className="pt-2">
+              <button
+                onClick={() => setModalAcessoNegado(null)}
+                className="px-5 py-2 rounded-xl bg-slate-900 dark:bg-slate-800 text-white text-xs font-semibold hover:bg-slate-800"
+              >
+                Entendi
               </button>
             </div>
           </div>

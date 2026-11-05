@@ -24,7 +24,9 @@ import {
   UserPlus,
   AlertTriangle,
   X,
-  Check
+  Check,
+  Edit2,
+  ArrowRightLeft
 } from 'lucide-react';
 import { Funcionario, Equipamento, Chamado, Tecnico } from '../types';
 
@@ -37,7 +39,9 @@ interface FuncionarioHistoricoViewProps {
   onDevolverEquipamento: (idEquipamento: string, observacoes: string) => void;
   onAdicionarSetor: (nomeSetor: string) => boolean;
   onRemoverSetor: (nomeSetor: string) => boolean;
+  onEditarSetor: (nomeAntigo: string, nomeNovo: string) => boolean;
   onAdicionarFuncionario: (funcionario: Funcionario) => boolean;
+  onEditarFuncionario: (funcionario: Funcionario) => boolean;
   onRemoverFuncionario: (idFuncionario: string) => boolean;
 }
 
@@ -50,7 +54,9 @@ export const FuncionarioHistoricoView: React.FC<FuncionarioHistoricoViewProps> =
   onDevolverEquipamento,
   onAdicionarSetor,
   onRemoverSetor,
+  onEditarSetor,
   onAdicionarFuncionario,
+  onEditarFuncionario,
   onRemoverFuncionario
 }) => {
   const isAdmin = tecnicoAtivo.papel === 'admin';
@@ -68,10 +74,14 @@ export const FuncionarioHistoricoView: React.FC<FuncionarioHistoricoViewProps> =
 
   const [termoBusca, setTermoBusca] = useState<string>('');
 
-  // Modais de Administração
+  // Modais de Administração - Setores
   const [modalNovoSetor, setModalNovoSetor] = useState<boolean>(false);
   const [nomeNovoSetor, setNomeNovoSetor] = useState<string>('');
 
+  const [modalEditarSetor, setModalEditarSetor] = useState<boolean>(false);
+  const [novoNomeSetorEdit, setNovoNomeSetorEdit] = useState<string>('');
+
+  // Modais de Administração - Funcionários
   const [modalNovoFuncionario, setModalNovoFuncionario] = useState<boolean>(false);
   const [novoFuncNome, setNovoFuncNome] = useState<string>('');
   const [novoFuncCpf, setNovoFuncCpf] = useState<string>('');
@@ -79,9 +89,17 @@ export const FuncionarioHistoricoView: React.FC<FuncionarioHistoricoViewProps> =
   const [novoFuncEmail, setNovoFuncEmail] = useState<string>('');
   const [novoFuncSetor, setNovoFuncSetor] = useState<string>(setorSelecionado);
 
+  const [modalEditarFuncionario, setModalEditarFuncionario] = useState<Funcionario | null>(null);
+  const [editFuncNome, setEditFuncNome] = useState<string>('');
+  const [editFuncCpf, setEditFuncCpf] = useState<string>('');
+  const [editFuncCargo, setEditFuncCargo] = useState<string>('');
+  const [editFuncSetor, setEditFuncSetor] = useState<string>('');
+  const [editFuncEmail, setEditFuncEmail] = useState<string>('');
+  const [editFuncStatus, setEditFuncStatus] = useState<'Ativo' | 'Inativo'>('Ativo');
+
   const [modalAcessoNegado, setModalAcessoNegado] = useState<string | null>(null);
 
-  // Lista consolidada de setores (lista cadastrada + setores encontrados nos funcionários)
+  // Lista consolidada de setores
   const todosSetores = Array.from(new Set([...setores, ...funcionarios.map(f => f.setor)]));
 
   // Funcionários do setor selecionado
@@ -146,7 +164,10 @@ export const FuncionarioHistoricoView: React.FC<FuncionarioHistoricoViewProps> =
     return temFuncionario;
   });
 
-  // Handler para Adicionar Setor (com checagem de Admin)
+  // ==========================================
+  // HANDLERS DE ADMINISTRAÇÃO DE SETOR
+  // ==========================================
+
   const handleSalvarNovoSetor = () => {
     if (!isAdmin) {
       setModalAcessoNegado('Apenas e-mails autenticados com papel de Administrador têm autorização para adicionar novos setores na empresa.');
@@ -165,17 +186,42 @@ export const FuncionarioHistoricoView: React.FC<FuncionarioHistoricoViewProps> =
     }
   };
 
-  // Handler para Remover Setor (com checagem de Admin e integridade)
+  const handleAbrirEditarSetor = () => {
+    if (!isAdmin) {
+      setModalAcessoNegado('Apenas administradores podem renomear ou editar setores.');
+      return;
+    }
+    setNovoNomeSetorEdit(setorSelecionado);
+    setModalEditarSetor(true);
+  };
+
+  const handleConfirmarEditarSetor = () => {
+    if (!isAdmin) return;
+    const novoNome = novoNomeSetorEdit.trim();
+    if (!novoNome) {
+      alert('O nome do setor não pode estar em branco.');
+      return;
+    }
+    if (novoNome.toLowerCase() === setorSelecionado.toLowerCase()) {
+      setModalEditarSetor(false);
+      return;
+    }
+    const sucesso = onEditarSetor(setorSelecionado, novoNome);
+    if (sucesso) {
+      setSetorSelecionado(novoNome);
+      setModalEditarSetor(false);
+    }
+  };
+
   const handleRemoverSetorClick = (nomeSetor: string) => {
     if (!isAdmin) {
       setModalAcessoNegado('Apenas e-mails autenticados com papel de Administrador têm permissão para remover setores da empresa.');
       return;
     }
 
-    // Validação de Integridade: Não pode remover se houver colaboradores ou equipamentos
     const funcsNoSetor = funcionarios.filter((f) => f.setor.toLowerCase() === nomeSetor.toLowerCase());
     if (funcsNoSetor.length > 0) {
-      alert(`Não é possível remover o setor "${nomeSetor}" pois ainda existem ${funcsNoSetor.length} colaborador(es) cadastrados nele. Remova ou transfira os colaboradores antes.`);
+      alert(`Não é possível remover o setor "${nomeSetor}" pois ainda existem ${funcsNoSetor.length} colaborador(es) cadastrados nele. Transfira os colaboradores para outro setor antes.`);
       return;
     }
 
@@ -188,7 +234,10 @@ export const FuncionarioHistoricoView: React.FC<FuncionarioHistoricoViewProps> =
     }
   };
 
-  // Handler para Adicionar Funcionário (com checagem de Admin)
+  // ==========================================
+  // HANDLERS DE ADMINISTRAÇÃO DE FUNCIONÁRIOS
+  // ==========================================
+
   const handleSalvarNovoFuncionario = () => {
     if (!isAdmin) {
       setModalAcessoNegado('Apenas e-mails autenticados com papel de Administrador têm autorização para cadastrar colaboradores.');
@@ -220,17 +269,52 @@ export const FuncionarioHistoricoView: React.FC<FuncionarioHistoricoViewProps> =
     }
   };
 
-  // Handler para Remover Funcionário (com checagem de Admin)
+  const handleAbrirEditarFuncionario = (func: Funcionario) => {
+    if (!isAdmin) {
+      setModalAcessoNegado('Apenas e-mails autenticados com papel de Administrador têm autorização para editar dados e setores de colaboradores.');
+      return;
+    }
+    setModalEditarFuncionario(func);
+    setEditFuncNome(func.nomeCompleto);
+    setEditFuncCpf(func.cpf);
+    setEditFuncCargo(func.cargo);
+    setEditFuncSetor(func.setor);
+    setEditFuncEmail(func.email);
+    setEditFuncStatus(func.status);
+  };
+
+  const handleConfirmarEditarFuncionario = () => {
+    if (!isAdmin || !modalEditarFuncionario) return;
+    if (!editFuncNome.trim() || !editFuncEmail.trim() || !editFuncCargo.trim()) {
+      alert('Nome, E-mail e Cargo são campos obrigatórios.');
+      return;
+    }
+
+    const funcAtualizado: Funcionario = {
+      ...modalEditarFuncionario,
+      nomeCompleto: editFuncNome.trim(),
+      cpf: editFuncCpf.trim(),
+      cargo: editFuncCargo.trim(),
+      setor: editFuncSetor,
+      email: editFuncEmail.trim(),
+      status: editFuncStatus
+    };
+
+    const sucesso = onEditarFuncionario(funcAtualizado);
+    if (sucesso) {
+      setModalEditarFuncionario(null);
+    }
+  };
+
   const handleRemoverFuncionarioClick = (func: Funcionario) => {
     if (!isAdmin) {
       setModalAcessoNegado('Apenas e-mails autenticados com papel de Administrador têm permissão para remover ou inativar colaboradores.');
       return;
     }
 
-    // Validação: Não pode remover se tiver equipamentos em uso
     const equipsComEle = equipamentos.filter(eq => eq.funcionarioAlocado?.toLowerCase().includes(func.nomeCompleto.toLowerCase()));
     if (equipsComEle.length > 0) {
-      alert(`Não é possível remover "${func.nomeCompleto}" porque ele(a) possui ${equipsComEle.length} equipamento(s) sob custódia (ex: ${equipsComEle[0].id}). Realize a devolução do equipamento primeiro.`);
+      alert(`Não é possível remover "${func.nomeCompleto}" porque ele(a) possui ${equipsComEle.length} equipamento(s) sob custódia (ex: ${equipsComEle[0].id}). Realize a devolução do equipamento ao estoque primeiro.`);
       return;
     }
 
@@ -255,27 +339,25 @@ export const FuncionarioHistoricoView: React.FC<FuncionarioHistoricoViewProps> =
             <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100 font-display">
               Gestão de Setores & Histórico 360º
             </h1>
+            {isAdmin ? (
+              <span className="px-2 py-0.5 rounded text-[11px] font-bold bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-500/30 flex items-center gap-1">
+                <ShieldCheck className="w-3.5 h-3.5" />
+                <span>Admin: Edição Completa</span>
+              </span>
+            ) : (
+              <span className="px-2 py-0.5 rounded text-[11px] font-medium bg-slate-100 dark:bg-slate-800 text-slate-500 border border-slate-200 dark:border-slate-700 flex items-center gap-1">
+                <Lock className="w-3.5 h-3.5" />
+                <span>Modo Técnico (Leitura)</span>
+              </span>
+            )}
           </div>
           <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
-            Organização corporativa por Departamentos: adicione e remova setores e colaboradores com controle de acesso exclusivo para <strong>Administradores</strong>.
+            Gestão total de Departamentos: adicione, edite e remova setores e aloque ou transfira funcionários entre setores com autorização de <strong>Administrador</strong>.
           </p>
         </div>
 
-        {/* Status de Permissão de Acesso */}
+        {/* Ações de Setor */}
         <div className="flex items-center gap-2">
-          {isAdmin ? (
-            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-700 dark:text-amber-300 text-xs font-semibold">
-              <ShieldCheck className="w-4 h-4 text-amber-500" />
-              <span>Acesso Administrador Ativo</span>
-            </div>
-          ) : (
-            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 text-xs font-medium">
-              <Lock className="w-3.5 h-3.5 text-slate-400" />
-              <span>Acesso Técnico (Sem permissão de admin)</span>
-            </div>
-          )}
-
-          {/* Botão Adicionar Setor */}
           <button
             onClick={() => {
               if (!isAdmin) {
@@ -296,18 +378,6 @@ export const FuncionarioHistoricoView: React.FC<FuncionarioHistoricoViewProps> =
           </button>
         </div>
       </div>
-
-      {/* Aviso Educativo caso não seja Admin */}
-      {!isAdmin && (
-        <div className="p-3.5 rounded-xl bg-slate-100 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-xs text-slate-600 dark:text-slate-300 flex items-center justify-between gap-3">
-          <div className="flex items-center gap-2">
-            <Lock className="w-4 h-4 text-slate-400 shrink-0" />
-            <span>
-              Você está autenticado como <strong>{tecnicoAtivo.nome}</strong> (Papel: <em>Técnico de Suporte</em>). As opções de adicionar ou remover setores e funcionários estão protegidas. Para testar a gestão administrativa, alterne para o usuário <strong>Rodrigo Henrique (Admin)</strong> no menu superior.
-            </span>
-          </div>
-        </div>
-      )}
 
       {/* Grid de Seletor de Setores */}
       <div>
@@ -398,7 +468,7 @@ export const FuncionarioHistoricoView: React.FC<FuncionarioHistoricoViewProps> =
       {/* PAINEL CENTRAL DO SETOR */}
       <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
         
-        {/* Cabeçalho do Setor Ativo com Botões de Ação */}
+        {/* Cabeçalho do Setor Ativo com Botões de Edição e Ações Administrativas */}
         <div className="p-5 border-b border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-800/50 flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4">
           <div className="flex items-center gap-3.5">
             <div className="w-12 h-12 rounded-xl bg-blue-600 text-white flex items-center justify-center font-display font-bold text-xl shadow-md shadow-blue-500/20">
@@ -413,24 +483,27 @@ export const FuncionarioHistoricoView: React.FC<FuncionarioHistoricoViewProps> =
                   {funcionariosDoSetor.length} Colaboradores
                 </span>
 
-                {/* Botão de Excluir Setor (Apenas Administrador) */}
-                {isAdmin ? (
-                  <button
-                    onClick={() => handleRemoverSetorClick(setorSelecionado)}
-                    className="p-1 rounded-md text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30 transition text-xs flex items-center gap-1 ml-2"
-                    title={`Remover setor "${setorSelecionado}" (Ação de Administrador)`}
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                    <span className="text-[11px] text-red-600 dark:text-red-400 font-medium">Remover Setor</span>
-                  </button>
-                ) : (
-                  <button
-                    onClick={() => setModalAcessoNegado('Apenas e-mails com papel de Administrador podem excluir setores.')}
-                    className="p-1 text-slate-300 dark:text-slate-600 cursor-not-allowed ml-2"
-                    title="Exclusão de setor bloqueada (exige papel Administrador)"
-                  >
-                    <Lock className="w-3.5 h-3.5" />
-                  </button>
+                {/* BOTÕES DE EDITAR E EXCLUIR SETOR (ADMIN) */}
+                {isAdmin && (
+                  <div className="flex items-center gap-1 ml-2">
+                    <button
+                      onClick={handleAbrirEditarSetor}
+                      className="p-1.5 rounded-lg text-slate-500 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950/40 transition text-xs flex items-center gap-1"
+                      title={`Renomear setor "${setorSelecionado}" (Exclusivo Administrador)`}
+                    >
+                      <Edit2 className="w-3.5 h-3.5" />
+                      <span className="text-[11px] font-medium">Renomear</span>
+                    </button>
+
+                    <button
+                      onClick={() => handleRemoverSetorClick(setorSelecionado)}
+                      className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/40 transition text-xs flex items-center gap-1"
+                      title={`Remover setor "${setorSelecionado}" (Exclusivo Administrador)`}
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      <span className="text-[11px] font-medium text-red-600 dark:text-red-400">Excluir</span>
+                    </button>
+                  </div>
                 )}
               </div>
               <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
@@ -455,10 +528,10 @@ export const FuncionarioHistoricoView: React.FC<FuncionarioHistoricoViewProps> =
                   ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
                   : 'bg-slate-200 dark:bg-slate-800 text-slate-400 cursor-not-allowed'
               }`}
-              title={isAdmin ? `Cadastrar novo colaborador no setor ${setorSelecionado}` : 'Ação restrita a administradores'}
+              title={isAdmin ? `Adicionar colaborador ao setor ${setorSelecionado}` : 'Ação restrita a administradores'}
             >
               <UserPlus className="w-3.5 h-3.5" />
-              <span>Novo Funcionário</span>
+              <span>Adicionar ao Setor</span>
             </button>
 
             {/* Seletor de Modo: Consolidado vs Funcionário */}
@@ -475,7 +548,7 @@ export const FuncionarioHistoricoView: React.FC<FuncionarioHistoricoViewProps> =
                 }`}
               >
                 <Layers className="w-3.5 h-3.5" />
-                <span>Visão Consolidada</span>
+                <span>Visão do Setor</span>
               </button>
 
               <button
@@ -506,7 +579,7 @@ export const FuncionarioHistoricoView: React.FC<FuncionarioHistoricoViewProps> =
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200/80 dark:border-slate-800 flex items-center justify-between">
                 <div>
-                  <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">Colaboradores</span>
+                  <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">Colaboradores do Setor</span>
                   <div className="text-2xl font-bold font-mono text-slate-900 dark:text-slate-100 mt-0.5">
                     {funcionariosDoSetor.length}
                   </div>
@@ -550,13 +623,13 @@ export const FuncionarioHistoricoView: React.FC<FuncionarioHistoricoViewProps> =
                   <span>Funcionários Registrados em {setorSelecionado} ({funcionariosDoSetor.length})</span>
                 </h3>
                 <span className="text-xs text-slate-400">
-                  {isAdmin ? 'Gerenciamento administrativo liberado' : 'Acesso somente leitura'}
+                  {isAdmin ? 'Edição e remoção de funcionários liberadas' : 'Modo visualização'}
                 </span>
               </div>
 
               {funcionariosDoSetor.length === 0 ? (
                 <div className="p-8 text-center border border-dashed border-slate-200 dark:border-slate-800 rounded-xl text-slate-400 text-xs space-y-2">
-                  <p>Nenhum funcionário cadastrado neste setor na aba <code>Funcionarios</code>.</p>
+                  <p>Nenhum funcionário cadastrado neste setor.</p>
                   {isAdmin && (
                     <button
                       onClick={() => {
@@ -605,15 +678,24 @@ export const FuncionarioHistoricoView: React.FC<FuncionarioHistoricoViewProps> =
                               {func.status}
                             </span>
 
-                            {/* Botão Remover Colaborador (Admin) */}
+                            {/* BOTÕES DE EDITAR E REMOVER DO ADMIN */}
                             {isAdmin && (
-                              <button
-                                onClick={() => handleRemoverFuncionarioClick(func)}
-                                className="p-1 text-slate-300 hover:text-red-600 rounded transition"
-                                title={`Remover colaborador "${func.nomeCompleto}" (Exclusivo Administrador)`}
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </button>
+                              <div className="flex items-center gap-0.5">
+                                <button
+                                  onClick={() => handleAbrirEditarFuncionario(func)}
+                                  className="p-1 text-slate-400 hover:text-blue-600 rounded transition"
+                                  title={`Editar dados ou transferir ${func.nomeCompleto} de setor`}
+                                >
+                                  <Edit2 className="w-3.5 h-3.5" />
+                                </button>
+                                <button
+                                  onClick={() => handleRemoverFuncionarioClick(func)}
+                                  className="p-1 text-slate-400 hover:text-red-600 rounded transition"
+                                  title={`Remover ${func.nomeCompleto} do setor`}
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
                             )}
                           </div>
                         </div>
@@ -800,7 +882,7 @@ export const FuncionarioHistoricoView: React.FC<FuncionarioHistoricoViewProps> =
 
             {funcionarioAtivo ? (
               <>
-                {/* Perfil Individual */}
+                {/* Perfil Individual com Botões de Edição */}
                 <div className="bg-slate-50 dark:bg-slate-800/40 p-5 rounded-xl border border-slate-200 dark:border-slate-800">
                   <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
                     <div className="flex items-center gap-3">
@@ -830,22 +912,34 @@ export const FuncionarioHistoricoView: React.FC<FuncionarioHistoricoViewProps> =
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-3">
-                      <div className="text-right">
+                    <div className="flex items-center gap-2">
+                      <div className="text-right mr-2">
                         <span className="text-[10px] uppercase tracking-wider text-slate-400 block">Matrícula</span>
                         <span className="font-mono text-xs font-bold text-slate-700 dark:text-slate-300">
                           {funcionarioAtivo.id}
                         </span>
                       </div>
+
                       {isAdmin && (
-                        <button
-                          onClick={() => handleRemoverFuncionarioClick(funcionarioAtivo)}
-                          className="px-2.5 py-1.5 rounded-lg border border-red-200 dark:border-red-900 hover:bg-red-50 dark:hover:bg-red-950/40 text-red-600 dark:text-red-400 text-xs font-semibold flex items-center gap-1 transition"
-                          title="Remover ou inativar colaborador da base"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                          <span>Remover</span>
-                        </button>
+                        <>
+                          <button
+                            onClick={() => handleAbrirEditarFuncionario(funcionarioAtivo)}
+                            className="px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 hover:bg-white text-slate-700 dark:text-slate-200 text-xs font-semibold flex items-center gap-1 transition"
+                            title="Editar dados e transferir colaborador de setor"
+                          >
+                            <Edit2 className="w-3.5 h-3.5" />
+                            <span>Editar</span>
+                          </button>
+
+                          <button
+                            onClick={() => handleRemoverFuncionarioClick(funcionarioAtivo)}
+                            className="px-2.5 py-1.5 rounded-lg border border-red-200 dark:border-red-900 hover:bg-red-50 dark:hover:bg-red-950/40 text-red-600 dark:text-red-400 text-xs font-semibold flex items-center gap-1 transition"
+                            title="Remover colaborador do setor"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                            <span>Remover</span>
+                          </button>
+                        </>
                       )}
                     </div>
                   </div>
@@ -975,7 +1069,7 @@ export const FuncionarioHistoricoView: React.FC<FuncionarioHistoricoViewProps> =
                   type="text"
                   value={nomeNovoSetor}
                   onChange={(e) => setNomeNovoSetor(e.target.value)}
-                  placeholder="Ex: Logística & Suprimentos, Jurídico, Compliance..."
+                  placeholder="Ex: Logística & Suprimentos, Jurídico..."
                   className="w-full text-xs p-3 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
                 />
               </div>
@@ -1006,6 +1100,60 @@ export const FuncionarioHistoricoView: React.FC<FuncionarioHistoricoViewProps> =
         </div>
       )}
 
+      {/* MODAL: EDITAR / RENOMEAR SETOR (ADMIN) */}
+      {modalEditarSetor && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200 dark:border-slate-800">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
+              <div className="flex items-center gap-2">
+                <span className="p-1 rounded-md bg-blue-100 dark:bg-blue-950 text-blue-600">
+                  <Edit2 className="w-4 h-4" />
+                </span>
+                <h3 className="text-base font-bold text-slate-900 dark:text-slate-100 font-display">
+                  Renomear Setor ({setorSelecionado})
+                </h3>
+              </div>
+              <button onClick={() => setModalEditarSetor(false)} className="text-slate-400 hover:text-slate-600">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="py-4 space-y-3">
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
+                  Novo Nome para o Setor <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={novoNomeSetorEdit}
+                  onChange={(e) => setNovoNomeSetorEdit(e.target.value)}
+                  className="w-full text-xs p-3 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                />
+              </div>
+
+              <div className="p-3 rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900 text-[11px] text-amber-800 dark:text-amber-300">
+                💡 Ao renomear o setor, todos os <strong>{funcionariosDoSetor.length} colaboradores</strong> e os chamados vinculados serão automaticamente transferidos para o novo nome.
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100 dark:border-slate-800">
+              <button
+                onClick={() => setModalEditarSetor(false)}
+                className="px-4 py-2 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleConfirmarEditarSetor}
+                className="px-4 py-2 text-xs font-semibold bg-blue-600 hover:bg-blue-700 text-white rounded-lg shadow-sm transition"
+              >
+                Salvar Novo Nome
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* MODAL: NOVO FUNCIONÁRIO (EXCLUSIVO ADMIN) */}
       {modalNovoFuncionario && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
@@ -1016,7 +1164,7 @@ export const FuncionarioHistoricoView: React.FC<FuncionarioHistoricoViewProps> =
                   <UserPlus className="w-4 h-4" />
                 </span>
                 <h3 className="text-base font-bold text-slate-900 dark:text-slate-100 font-display">
-                  Cadastrar Novo Funcionário
+                  Adicionar Funcionário ao Setor
                 </h3>
               </div>
               <button onClick={() => setModalNovoFuncionario(false)} className="text-slate-400 hover:text-slate-600">
@@ -1116,6 +1264,132 @@ export const FuncionarioHistoricoView: React.FC<FuncionarioHistoricoViewProps> =
                 className="px-4 py-2 text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg shadow-sm transition"
               >
                 Salvar Colaborador
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: EDITAR FUNCIONÁRIO & MUDAR DE SETOR (ADMIN) */}
+      {modalEditarFuncionario && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-slate-200 dark:border-slate-800">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
+              <div className="flex items-center gap-2">
+                <span className="p-1 rounded-md bg-blue-100 dark:bg-blue-950 text-blue-600">
+                  <Edit2 className="w-4 h-4" />
+                </span>
+                <div>
+                  <h3 className="text-base font-bold text-slate-900 dark:text-slate-100 font-display">
+                    Editar Colaborador ({modalEditarFuncionario.id})
+                  </h3>
+                  <span className="text-[10px] text-amber-600 font-medium">Exclusivo Administrador</span>
+                </div>
+              </div>
+              <button onClick={() => setModalEditarFuncionario(null)} className="text-slate-400 hover:text-slate-600">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="py-4 space-y-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                    Nome Completo <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={editFuncNome}
+                    onChange={(e) => setEditFuncNome(e.target.value)}
+                    className="w-full text-xs p-2.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                    CPF
+                  </label>
+                  <input
+                    type="text"
+                    value={editFuncCpf}
+                    onChange={(e) => setEditFuncCpf(e.target.value)}
+                    className="w-full text-xs p-2.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                    Cargo / Função <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={editFuncCargo}
+                    onChange={(e) => setEditFuncCargo(e.target.value)}
+                    className="w-full text-xs p-2.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100"
+                  />
+                </div>
+
+                {/* TRANSFERÊNCIA / MUDANÇA DE SETOR */}
+                <div>
+                  <label className="block text-xs font-semibold text-blue-600 dark:text-blue-400 mb-1 flex items-center gap-1">
+                    <ArrowRightLeft className="w-3.5 h-3.5" />
+                    <span>Setor Alocado (Transferir)</span>
+                  </label>
+                  <select
+                    value={editFuncSetor}
+                    onChange={(e) => setEditFuncSetor(e.target.value)}
+                    className="w-full text-xs p-2.5 rounded-lg border border-blue-300 dark:border-blue-700 bg-blue-50/50 dark:bg-blue-950/30 text-slate-900 dark:text-slate-100 font-semibold"
+                  >
+                    {todosSetores.map((s) => (
+                      <option key={s} value={s}>{s}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                    E-mail Corporativo <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="email"
+                    value={editFuncEmail}
+                    onChange={(e) => setEditFuncEmail(e.target.value)}
+                    className="w-full text-xs p-2.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                    Status do Cadastro
+                  </label>
+                  <select
+                    value={editFuncStatus}
+                    onChange={(e) => setEditFuncStatus(e.target.value as 'Ativo' | 'Inativo')}
+                    className="w-full text-xs p-2.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100"
+                  >
+                    <option value="Ativo">Ativo</option>
+                    <option value="Inativo">Inativo</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100 dark:border-slate-800">
+              <button
+                onClick={() => setModalEditarFuncionario(null)}
+                className="px-4 py-2 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleConfirmarEditarFuncionario}
+                className="px-4 py-2 text-xs font-semibold bg-blue-600 hover:bg-blue-700 text-white rounded-lg shadow-sm transition"
+              >
+                Salvar Alterações
               </button>
             </div>
           </div>

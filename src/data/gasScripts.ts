@@ -98,6 +98,26 @@ function adicionarSetor(nomeSetor) {
 }
 
 /**
+ * Renomeia um setor corporativo e atualiza colaboradores vinculados (Apenas Administrador)
+ */
+function editarSetor(nomeAntigo, nomeNovo) {
+  if (!isUsuarioAdmin()) {
+    throw new Error('Acesso negado: Apenas e-mails com papel de Administrador têm autorização para editar setores.');
+  }
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheetFunc = ss.getSheetByName(CONFIG.NOMES_ABAS.FUNCIONARIOS);
+  if (sheetFunc) {
+    const dados = sheetFunc.getDataRange().getValues();
+    for (let i = 1; i < dados.length; i++) {
+      if (String(dados[i][4]).toLowerCase() === String(nomeAntigo).toLowerCase()) {
+        sheetFunc.getRange(i + 1, 5).setValue(nomeNovo);
+      }
+    }
+  }
+  return { sucesso: true, mensagem: 'Setor renomeado para "' + nomeNovo + '" e funcionários vinculados atualizados!' };
+}
+
+/**
  * Remove um setor corporativo (Apenas Administrador)
  */
 function removerSetor(nomeSetor) {
@@ -133,6 +153,34 @@ function adicionarFuncionario(dados) {
 }
 
 /**
+ * Edita dados de um funcionário existente (Apenas Administrador)
+ * Permite alteração de setor (transferência de departamento), cargo, e-mail e status
+ */
+function editarFuncionario(dados) {
+  if (!isUsuarioAdmin()) {
+    throw new Error('Acesso negado: Apenas administradores podem editar colaboradores.');
+  }
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss.getSheetByName(CONFIG.NOMES_ABAS.FUNCIONARIOS);
+  if (!sheet) throw new Error('Aba Funcionarios não localizada.');
+
+  const valores = sheet.getDataRange().getValues();
+  for (let i = 1; i < valores.length; i++) {
+    if (valores[i][0] === dados.id) {
+      const linha = i + 1;
+      sheet.getRange(linha, 2).setValue(dados.nomeCompleto);
+      sheet.getRange(linha, 3).setValue(dados.cpf || valores[i][2]);
+      sheet.getRange(linha, 4).setValue(dados.cargo);
+      sheet.getRange(linha, 5).setValue(dados.setor);
+      sheet.getRange(linha, 6).setValue(dados.email);
+      sheet.getRange(linha, 7).setValue(dados.status || 'Ativo');
+      return { sucesso: true, mensagem: 'Colaborador "' + dados.nomeCompleto + '" atualizado com sucesso!' };
+    }
+  }
+  throw new Error('Colaborador com ID ' + dados.id + ' não localizado.');
+}
+
+/**
  * Remove funcionário da aba Funcionarios (Apenas Administrador)
  */
 function removerFuncionario(idFuncionario) {
@@ -151,6 +199,81 @@ function removerFuncionario(idFuncionario) {
     }
   }
   throw new Error('Colaborador não localizado com o ID ' + idFuncionario);
+}
+
+/**
+ * Cadastra novo equipamento no Inventário (Apenas Administrador)
+ */
+function cadastrarEquipamento(dados) {
+  if (!isUsuarioAdmin()) {
+    throw new Error('Acesso negado: Apenas administradores podem cadastrar equipamentos.');
+  }
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss.getSheetByName(CONFIG.NOMES_ABAS.INVENTARIO);
+  if (!sheet) throw new Error('Aba Inventario não localizada.');
+
+  const agoraStr = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'dd/MM/yyyy HH:mm:ss');
+  sheet.appendRow([
+    dados.id,
+    dados.tipo,
+    dados.marcaModelo,
+    dados.numSerie || 'S/N',
+    dados.status || 'Disponível',
+    dados.funcionarioAlocado || '',
+    agoraStr
+  ]);
+
+  return { sucesso: true, mensagem: 'Equipamento ' + dados.id + ' cadastrado com sucesso!' };
+}
+
+/**
+ * Edita equipamento existente no Inventário (Apenas Administrador)
+ */
+function editarEquipamento(dados) {
+  if (!isUsuarioAdmin()) {
+    throw new Error('Acesso negado: Apenas administradores podem editar equipamentos.');
+  }
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss.getSheetByName(CONFIG.NOMES_ABAS.INVENTARIO);
+  if (!sheet) throw new Error('Aba Inventario não localizada.');
+
+  const valores = sheet.getDataRange().getValues();
+  const agoraStr = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'dd/MM/yyyy HH:mm:ss');
+
+  for (let i = 1; i < valores.length; i++) {
+    if (valores[i][0] === dados.id) {
+      const linha = i + 1;
+      sheet.getRange(linha, 2).setValue(dados.tipo);
+      sheet.getRange(linha, 3).setValue(dados.marcaModelo);
+      sheet.getRange(linha, 4).setValue(dados.numSerie);
+      sheet.getRange(linha, 5).setValue(dados.status);
+      sheet.getRange(linha, 6).setValue(dados.funcionarioAlocado || '');
+      sheet.getRange(linha, 7).setValue(agoraStr);
+      return { sucesso: true, mensagem: 'Equipamento ' + dados.id + ' atualizado com sucesso!' };
+    }
+  }
+  throw new Error('Equipamento com ID ' + dados.id + ' não localizado.');
+}
+
+/**
+ * Remove equipamento do Inventário (Apenas Administrador)
+ */
+function removerEquipamento(idEquipamento) {
+  if (!isUsuarioAdmin()) {
+    throw new Error('Acesso negado: Apenas administradores podem remover equipamentos.');
+  }
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss.getSheetByName(CONFIG.NOMES_ABAS.INVENTARIO);
+  if (!sheet) throw new Error('Aba Inventario não localizada.');
+
+  const valores = sheet.getDataRange().getValues();
+  for (let i = 1; i < valores.length; i++) {
+    if (valores[i][0] === idEquipamento) {
+      sheet.deleteRow(i + 1);
+      return { sucesso: true, mensagem: 'Equipamento ' + idEquipamento + ' removido do inventário.' };
+    }
+  }
+  throw new Error('Equipamento com ID ' + idEquipamento + ' não localizado.');
 }
 
 // ============================================================================
@@ -847,34 +970,39 @@ function enviarEmailEncerramento(dados) {
 
 export const SETUP_PLANILHA_GS = `/**
  * @file Setup_Planilha.gs
- * @description Script de inicialização automática do banco de dados na planilha
- * Cria as 4 abas, formata cabeçalhos institucionais, congela linhas e insere dados de teste.
- * Execute a função: configurarBancoDeDados()
+ * @description Script de inicialização automática do banco de dados na planilha Google Sheets
+ * Cria e formata as 4 abas estruturadas com as colunas solicitadas:
+ * 1. Funcionários: Nome do Colaborador, Email, Setor, Status, Equipamentos Alocados
+ * 2. Equipamentos (Inventário): Património, Tipo, Marca & Modelo, Nº de Série, Status, Colaborador Alocado
+ * 3. Chamados (Helpdesk): Protocolo, Data/Hora, Solicitante, Email, Setor, Categoria, Descrição, Prioridade, Status, SLA, Técnico Responsável
+ * 4. Movimentações (Histórico): Data/Hora, Património, Colaborador Origem, Colaborador Destino, Tipo de Movimentação, Observações
+ * 
+ * Para executar: Abra a planilha -> Extensões -> Apps Script -> Selecione 'configurarBancoDeDados' e clique em Executar.
  */
 
 function configurarBancoDeDados() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
 
-  // 1. ABA CHAMADOS
-  let abaChamados = ss.getSheetByName('Chamados');
+  // 1. ABA CHAMADOS (HELPDESK)
+  let abaChamados = ss.getSheetByName('Chamados (Helpdesk)') || ss.getSheetByName('Chamados');
   if (!abaChamados) {
-    abaChamados = ss.insertSheet('Chamados');
+    abaChamados = ss.insertSheet('Chamados (Helpdesk)');
+  } else {
+    abaChamados.setName('Chamados (Helpdesk)');
   }
   abaChamados.clear();
   const cabecalhosChamados = [
-    'ID Chamado',
-    'Data/Hora Abertura',
-    'Nome Solicitante',
-    'E-mail Solicitante',
+    'Protocolo',
+    'Data/Hora',
+    'Solicitante',
+    'Email',
     'Setor',
-    'Categoria do Problema',
+    'Categoria',
     'Descrição',
     'Prioridade',
-    'E-mail Técnico Responsável',
     'Status',
-    'Observações Técnicas',
-    'Data de Fechamento',
-    'Tempo de Atendimento / SLA'
+    'SLA',
+    'Técnico Responsável'
   ];
   abaChamados.getRange(1, 1, 1, cabecalhosChamados.length).setValues([cabecalhosChamados]);
   formatarCabecalho(abaChamados, '#1E293B', cabecalhosChamados.length);
@@ -883,7 +1011,7 @@ function configurarBancoDeDados() {
   const regraStatus = SpreadsheetApp.newDataValidation()
     .requireValueInList(['Aberto', 'Em Andamento', 'Aguardando Peça', 'Concluído', 'Cancelado'], true)
     .build();
-  abaChamados.getRange('J2:J1000').setDataValidation(regraStatus);
+  abaChamados.getRange('I2:I1000').setDataValidation(regraStatus);
 
   const regraPrioridade = SpreadsheetApp.newDataValidation()
     .requireValueInList(['Baixa', 'Média', 'Alta', 'Crítica'], true)
@@ -891,19 +1019,19 @@ function configurarBancoDeDados() {
   abaChamados.getRange('H2:H1000').setDataValidation(regraPrioridade);
 
   // 2. ABA FUNCIONÁRIOS
-  let abaFunc = ss.getSheetByName('Funcionarios');
+  let abaFunc = ss.getSheetByName('Funcionários') || ss.getSheetByName('Funcionarios');
   if (!abaFunc) {
-    abaFunc = ss.insertSheet('Funcionarios');
+    abaFunc = ss.insertSheet('Funcionários');
+  } else {
+    abaFunc.setName('Funcionários');
   }
   abaFunc.clear();
   const cabecalhosFunc = [
-    'ID Funcionário',
-    'Nome Completo',
-    'CPF',
-    'Cargo',
+    'Nome do Colaborador',
+    'Email',
     'Setor',
-    'E-mail',
-    'Status'
+    'Status',
+    'Equipamentos Alocados'
   ];
   abaFunc.getRange(1, 1, 1, cabecalhosFunc.length).setValues([cabecalhosFunc]);
   formatarCabecalho(abaFunc, '#0F766E', cabecalhosFunc.length);
@@ -911,28 +1039,29 @@ function configurarBancoDeDados() {
   const regraStatusFunc = SpreadsheetApp.newDataValidation()
     .requireValueInList(['Ativo', 'Inativo'], true)
     .build();
-  abaFunc.getRange('G2:G1000').setDataValidation(regraStatusFunc);
+  abaFunc.getRange('D2:D1000').setDataValidation(regraStatusFunc);
 
-  // 3. ABA INVENTÁRIO
-  let abaInv = ss.getSheetByName('Inventario');
+  // 3. ABA EQUIPAMENTOS (INVENTÁRIO)
+  let abaInv = ss.getSheetByName('Equipamentos (Inventário)') || ss.getSheetByName('Inventario');
   if (!abaInv) {
-    abaInv = ss.insertSheet('Inventario');
+    abaInv = ss.insertSheet('Equipamentos (Inventário)');
+  } else {
+    abaInv.setName('Equipamentos (Inventário)');
   }
   abaInv.clear();
   const cabecalhosInv = [
-    'ID Máquina/Patrimônio',
+    'Património',
     'Tipo',
-    'Marca/Modelo',
+    'Marca & Modelo',
     'Nº de Série',
     'Status',
-    'Funcionário Alocado',
-    'Data da Última Movimentação'
+    'Colaborador Alocado'
   ];
   abaInv.getRange(1, 1, 1, cabecalhosInv.length).setValues([cabecalhosInv]);
   formatarCabecalho(abaInv, '#1D4ED8', cabecalhosInv.length);
 
   const regraStatusInv = SpreadsheetApp.newDataValidation()
-    .requireValueInList(['Disponível', 'Em Uso', 'Em Manutenção', 'Descartado'], true)
+    .requireValueInList(['Em uso', 'Em estoque', 'Em manutenção', 'Descartado'], true)
     .build();
   abaInv.getRange('E2:E1000').setDataValidation(regraStatusInv);
 
@@ -941,19 +1070,20 @@ function configurarBancoDeDados() {
     .build();
   abaInv.getRange('B2:B1000').setDataValidation(regraTipoInv);
 
-  // 4. ABA MOVIMENTAÇÕES
-  let abaMov = ss.getSheetByName('Movimentacoes');
+  // 4. ABA MOVIMENTAÇÕES (HISTÓRICO)
+  let abaMov = ss.getSheetByName('Movimentações (Histórico)') || ss.getSheetByName('Movimentacoes');
   if (!abaMov) {
-    abaMov = ss.insertSheet('Movimentacoes');
+    abaMov = ss.insertSheet('Movimentações (Histórico)');
+  } else {
+    abaMov.setName('Movimentações (Histórico)');
   }
   abaMov.clear();
   const cabecalhosMov = [
-    'ID Movimentação',
     'Data/Hora',
-    'ID Equipamento',
-    'Tipo de Ação',
-    'Funcionário Envolvido',
-    'E-mail Técnico Responsável',
+    'Património',
+    'Colaborador Origem',
+    'Colaborador Destino',
+    'Tipo de Movimentação',
     'Observações'
   ];
   abaMov.getRange(1, 1, 1, cabecalhosMov.length).setValues([cabecalhosMov]);
@@ -962,12 +1092,12 @@ function configurarBancoDeDados() {
   const regraAcaoMov = SpreadsheetApp.newDataValidation()
     .requireValueInList(['Atribuição', 'Devolução', 'Manutenção'], true)
     .build();
-  abaMov.getRange('D2:D1000').setDataValidation(regraAcaoMov);
+  abaMov.getRange('E2:E1000').setDataValidation(regraAcaoMov);
 
   // 5. INSERIR DADOS INICIAIS DE TESTE
   inserirDadosIniciais(abaChamados, abaFunc, abaInv, abaMov);
 
-  SpreadsheetApp.getActiveSpreadsheet().toast('Banco de dados DeskOps configurado com sucesso nas 4 abas!', 'Sucesso', 5);
+  SpreadsheetApp.getActiveSpreadsheet().toast('Banco de dados DeskOps configurado com sucesso nas 4 abas estruturadas!', 'Sucesso', 5);
 }
 
 function formatarCabecalho(aba, corFundoHex, colunas) {
@@ -985,25 +1115,25 @@ function formatarCabecalho(aba, corFundoHex, colunas) {
 }
 
 function inserirDadosIniciais(abaChamados, abaFunc, abaInv, abaMov) {
-  // Dados de Funcionários
-  abaFunc.appendRow(['FUNC-001', 'Mariana Souza', '123.456.789-00', 'Analista Financeiro', 'Financeiro', 'mariana.souza@empresa.com', 'Ativo']);
-  abaFunc.appendRow(['FUNC-002', 'Carlos Eduardo', '234.567.890-11', 'Designer UI/UX', 'Marketing', 'carlos.eduardo@empresa.com', 'Ativo']);
-  abaFunc.appendRow(['FUNC-003', 'Fernanda Lima', '345.678.901-22', 'Gerente Comercial', 'Comercial', 'fernanda.lima@empresa.com', 'Ativo']);
-  abaFunc.appendRow(['FUNC-004', 'Lucas Oliveira', '456.789.012-33', 'Dev Backend', 'Engenharia', 'lucas.oliveira@empresa.com', 'Ativo']);
+  // Dados de Funcionários: Nome do Colaborador, Email, Setor, Status, Equipamentos Alocados
+  abaFunc.appendRow(['Mariana Souza', 'mariana.souza@empresa.com', 'Financeiro', 'Ativo', 'PAT-1001']);
+  abaFunc.appendRow(['Carlos Eduardo', 'carlos.eduardo@empresa.com', 'Marketing', 'Ativo', 'PAT-1002, PAT-1003']);
+  abaFunc.appendRow(['Fernanda Lima', 'fernanda.lima@empresa.com', 'Comercial', 'Ativo', 'Nenhum']);
+  abaFunc.appendRow(['Lucas Oliveira', 'lucas.oliveira@empresa.com', 'Engenharia', 'Ativo', 'Nenhum']);
 
-  // Dados de Inventário
-  abaInv.appendRow(['PAT-1001', 'Notebook', 'Dell Latitude 3420 i7 16GB', 'DELL-SN-89211', 'Em Uso', 'Mariana Souza', '02/11/2026 09:30']);
-  abaInv.appendRow(['PAT-1002', 'Notebook', 'MacBook Air M2 16GB', 'APPLE-SN-44391', 'Em Uso', 'Carlos Eduardo', '01/11/2026 14:15']);
-  abaInv.appendRow(['PAT-1003', 'Monitor', 'Dell UltraSharp 27" 4K', 'DELL-MN-11822', 'Em Uso', 'Carlos Eduardo', '01/11/2026 14:20']);
-  abaInv.appendRow(['PAT-1004', 'Notebook', 'Lenovo ThinkPad E14 i5 16GB', 'LEN-SN-99812', 'Disponível', '', '28/10/2026 11:00']);
-  abaInv.appendRow(['PAT-1005', 'Desktop', 'HP ProDesk 600 G6 i5', 'HP-SN-33910', 'Em Manutenção', '', '30/10/2026 16:45']);
+  // Dados de Equipamentos (Inventário): Património, Tipo, Marca & Modelo, Nº de Série, Status, Colaborador Alocado
+  abaInv.appendRow(['PAT-1001', 'Notebook', 'Dell Latitude 3420 i7 16GB', 'DELL-SN-89211', 'Em uso', 'Mariana Souza']);
+  abaInv.appendRow(['PAT-1002', 'Notebook', 'MacBook Air M2 16GB', 'APPLE-SN-44391', 'Em uso', 'Carlos Eduardo']);
+  abaInv.appendRow(['PAT-1003', 'Monitor', 'Dell UltraSharp 27" 4K', 'DELL-MN-11822', 'Em uso', 'Carlos Eduardo']);
+  abaInv.appendRow(['PAT-1004', 'Notebook', 'Lenovo ThinkPad E14 i5 16GB', 'LEN-SN-99812', 'Em estoque', '']);
+  abaInv.appendRow(['PAT-1005', 'Desktop', 'HP ProDesk 600 G6 i5', 'HP-SN-33910', 'Em manutenção', '']);
 
-  // Dados de Movimentações
-  abaMov.appendRow(['MOV-20261102-01', '02/11/2026 09:30', 'PAT-1001', 'Atribuição', 'Mariana Souza', 'suporte-ti@empresa.com', 'Notebook entregue no onboarding']);
-  abaMov.appendRow(['MOV-20261101-02', '01/11/2026 14:15', 'PAT-1002', 'Atribuição', 'Carlos Eduardo', 'suporte-ti@empresa.com', 'MacBook alocado para design']);
-  abaMov.appendRow(['MOV-20261030-03', '30/10/2026 16:45', 'PAT-1005', 'Manutenção', '', 'suporte-ti@empresa.com', 'Substituição de cooler e fonte']);
+  // Dados de Movimentações (Histórico): Data/Hora, Património, Colaborador Origem, Colaborador Destino, Tipo de Movimentação, Observações
+  abaMov.appendRow(['02/11/2026 09:30', 'PAT-1001', 'Estoque / TI', 'Mariana Souza', 'Atribuição', 'Notebook entregue no onboarding']);
+  abaMov.appendRow(['01/11/2026 14:15', 'PAT-1002', 'Estoque / TI', 'Carlos Eduardo', 'Atribuição', 'MacBook alocado para design']);
+  abaMov.appendRow(['30/10/2026 16:45', 'PAT-1005', 'Estoque / TI', 'Laboratório', 'Manutenção', 'Substituição de cooler e fonte']);
 
-  // Dados de Chamados
+  // Dados de Chamados (Helpdesk): Protocolo, Data/Hora, Solicitante, Email, Setor, Categoria, Descrição, Prioridade, Status, SLA, Técnico Responsável
   abaChamados.appendRow([
     'CH-2026-0001',
     '04/11/2026 08:30:00',
@@ -1013,11 +1143,9 @@ function inserirDadosIniciais(abaChamados, abaFunc, abaInv, abaMov) {
     '🔴 Sem internet / Rede',
     'Cabo de rede não conecta ao switch da baia 4. Não consigo acessar o ERP.',
     'Alta',
-    'suporte-ti@empresa.com',
     'Em Andamento',
-    '[04/11 08:45] Técnico no local testando o ponto de rede.',
-    '',
-    'Dentro do Prazo'
+    'Dentro do Prazo',
+    'rodrigohf.sornn@gmail.com'
   ]);
 
   abaChamados.appendRow([
@@ -1026,14 +1154,12 @@ function inserirDadosIniciais(abaChamados, abaFunc, abaInv, abaMov) {
     'Fernanda Lima',
     'fernanda.lima@empresa.com',
     'Comercial',
-    '🖨️ Impressora não funciona',
-    'Impressora do 2º andar com aviso de papel atolado e toner baixo.',
-    'Média',
-    '',
+    '💻 Computador não liga / Tela preta',
+    'Notebook desligou durante apresentação com cliente e não dá mais sinal de energia.',
+    'Crítica',
     'Aberto',
-    'Chamado aberto via Google Forms.',
-    '',
-    'Dentro do Prazo'
+    'Dentro do Prazo',
+    ''
   ]);
 }
 `;
