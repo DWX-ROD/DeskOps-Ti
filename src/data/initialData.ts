@@ -1,8 +1,14 @@
 import { Chamado, Funcionario, Equipamento, Movimentacao, Tecnico } from '../types';
 
+export const EMAILS_ADMINISTRADORES = [
+  'rodrigohf.sornn@gmail.com',
+  'rodhf.sett@gmail.com',
+  'admin-ti@suaempresa.com.br'
+];
+
 export const TECNICO_PADRAO: Tecnico = {
   nome: 'Rodrigo Henrique',
-  email: 'rodrigohf.sornn@gmail.com',
+  email: 'rodhf.sett@gmail.com',
   cargo: 'Especialista em Suporte e Infraestrutura',
   papel: 'admin'
 };
@@ -10,6 +16,12 @@ export const TECNICO_PADRAO: Tecnico = {
 export const LISTA_TECNICOS_DISPONIVEIS: Tecnico[] = [
   {
     nome: 'Rodrigo Henrique',
+    email: 'rodhf.sett@gmail.com',
+    cargo: 'Especialista em TI (Admin Master)',
+    papel: 'admin'
+  },
+  {
+    nome: 'Rodrigo Henrique (Backup)',
     email: 'rodrigohf.sornn@gmail.com',
     cargo: 'Especialista em TI',
     papel: 'admin'

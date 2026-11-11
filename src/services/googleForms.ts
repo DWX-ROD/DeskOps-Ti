@@ -11,8 +11,8 @@ export interface GoogleFormCriado {
 }
 
 export const CAMPOS_FORMULARIO_PADRAO = {
-  TITULO: 'DeskOps TI - Abertura de Chamado',
-  DESCRICAO: 'Canal oficial de suporte técnico da empresa. Preencha os campos abaixo para abrir um chamado para a equipe de TI.',
+  TITULO: 'DeskOps TI - Abertura de Chamado por Setor',
+  DESCRICAO: 'Canal oficial de suporte técnico. Basta selecionar o seu Setor e descrever o que você precisa. A equipe de TI fará a triagem e o atendimento.',
   CATEGORIAS: [
     '💻 Hardware (Computador, Monitor, Periféricos)',
     '🌐 Redes / Internet / Wi-Fi',
@@ -60,6 +60,7 @@ export const CAMPOS_FORMULARIO_PADRAO = {
 
 /**
  * Cria o Google Form oficial de abertura de chamados na conta Google do usuário usando a Google Forms API v1
+ * Estrutura simplificada focada em SETOR para facilitar a abertura pelos colaboradores.
  */
 export async function criarGoogleFormChamados(
   accessToken: string,
@@ -79,8 +80,7 @@ export async function criarGoogleFormChamados(
     },
     body: JSON.stringify({
       info: {
-        title: titulo,
-        documentTitle: titulo
+        title: titulo
       }
     })
   });
@@ -93,49 +93,16 @@ export async function criarGoogleFormChamados(
   const formData = await resCriacao.json();
   const formId = formData.formId;
 
-  // 2. Adiciona os campos estruturados solicitados:
-  // - Nome Completo (Texto curto)
-  // - E-mail do Solicitante (Texto curto)
-  // - Setor / Departamento (Lista suspensa)
-  // - Categoria do Problema (Lista suspensa)
-  // - Descrição Detalhada do Problema (Texto longo)
-  // - Nível de Urgência / Impacto Percebido (Múltipla escolha)
+  // 2. Adiciona os campos simplificados focados no SETOR:
+  // - Item 0: Setor / Departamento (Lista suspensa obrigatória com os 27 setores)
+  // - Item 1: O que o seu Setor precisa? (Texto longo obrigatório)
+  // - Item 2: Colaborador / Ramal de Contato (Texto curto opcional)
   const requests = [
     {
       createItem: {
         item: {
-          title: 'Nome Completo do Solicitante',
-          description: 'Informe seu nome e sobrenome.',
-          questionItem: {
-            question: {
-              required: true,
-              textQuestion: { paragraph: false }
-            }
-          }
-        },
-        location: { index: 0 }
-      }
-    },
-    {
-      createItem: {
-        item: {
-          title: 'E-mail Corporativo do Solicitante',
-          description: 'Você receberá a confirmação com o número do protocolo neste e-mail.',
-          questionItem: {
-            question: {
-              required: true,
-              textQuestion: { paragraph: false }
-            }
-          }
-        },
-        location: { index: 1 }
-      }
-    },
-    {
-      createItem: {
-        item: {
-          title: 'Setor / Departamento',
-          description: 'Selecione a sua área na empresa.',
+          title: 'Setor / Departamento Solicitante',
+          description: 'Selecione o setor da sua empresa que necessita de suporte técnico.',
           questionItem: {
             question: {
               required: true,
@@ -146,32 +113,14 @@ export async function criarGoogleFormChamados(
             }
           }
         },
-        location: { index: 2 }
+        location: { index: 0 }
       }
     },
     {
       createItem: {
         item: {
-          title: 'Categoria do Problema',
-          description: 'Selecione o tipo de problema para direcionar ao técnico correto.',
-          questionItem: {
-            question: {
-              required: true,
-              choiceQuestion: {
-                type: 'DROP_DOWN',
-                options: CAMPOS_FORMULARIO_PADRAO.CATEGORIAS.map((c) => ({ value: c }))
-              }
-            }
-          }
-        },
-        location: { index: 3 }
-      }
-    },
-    {
-      createItem: {
-        item: {
-          title: 'Descrição Detalhada do Problema',
-          description: 'Descreva o que está acontecendo, mensagens de erro e há quanto tempo o problema começou.',
+          title: 'O que o seu Setor precisa? (Descrição do problema)',
+          description: 'Descreva em poucas palavras o que está acontecendo (ex: computador não liga, impressora sem papel, sem acesso à internet).',
           questionItem: {
             question: {
               required: true,
@@ -179,30 +128,22 @@ export async function criarGoogleFormChamados(
             }
           }
         },
-        location: { index: 4 }
+        location: { index: 1 }
       }
     },
     {
       createItem: {
         item: {
-          title: 'Nível de Urgência / Impacto Percebido',
-          description: 'Defina o impacto do problema em suas atividades. Isso determinará o SLA de atendimento.',
+          title: 'Colaborador / Ramal de Contato no Setor (Opcional)',
+          description: 'Se desejar, informe seu nome ou ramal para facilitar o contato pelo técnico de TI.',
           questionItem: {
             question: {
-              required: true,
-              choiceQuestion: {
-                type: 'RADIO',
-                options: [
-                  { value: 'Baixa (Até 24h - Dúvida ou problema sem parada de trabalho)' },
-                  { value: 'Média (Até 8h - Trabalho prejudicado, mas com alternativa)' },
-                  { value: 'Alta (Até 4h - Máquina ou serviço indispensável sem funcionar)' },
-                  { value: 'Crítica (Até 2h - Parada total de setor ou diretoria)' }
-                ]
-              }
+              required: false,
+              textQuestion: { paragraph: false }
             }
           }
         },
-        location: { index: 5 }
+        location: { index: 2 }
       }
     }
   ];
@@ -218,7 +159,9 @@ export async function criarGoogleFormChamados(
 
   if (!resItens.ok) {
     const erro = await resItens.json().catch(() => ({}));
-    console.warn('Erro ao popular itens do Forms via API, formulário criado vazio:', erro);
+    const detalhe = erro?.error?.message || resItens.statusText;
+    console.error('Erro ao popular itens do Forms via API:', erro);
+    throw new Error(`O formulário foi criado no Drive (ID: ${formId}), mas não foi possível adicionar as perguntas: ${detalhe}. Você pode recriá-lo a qualquer momento.`);
   }
 
   const responderUri = formData.responderUri || `https://docs.google.com/forms/d/e/${formId}/viewform`;
@@ -230,4 +173,96 @@ export async function criarGoogleFormChamados(
     editUri,
     titulo
   };
+}
+
+/**
+ * Extrai o ID do formulário a partir de um link completo ou ID direto
+ */
+export function extrairFormId(input: string): string {
+  if (!input) return '';
+  const trimmed = input.trim();
+  // Ex: https://docs.google.com/forms/d/1FAIpQLSc.../edit
+  const match = trimmed.match(/\/forms\/d\/([a-zA-Z0-9_-]+)/);
+  if (match) return match[1];
+  // Ex: https://docs.google.com/forms/d/e/1FAIpQLSc.../viewform
+  const matchE = trimmed.match(/\/forms\/d\/e\/([a-zA-Z0-9_-]+)/);
+  if (matchE) return matchE[1];
+  return trimmed;
+}
+
+/**
+ * Valida se um formulário Google existe e está acessível na conta do usuário
+ */
+export async function verificarGoogleFormExistente(
+  accessToken: string,
+  formId: string
+): Promise<{ valido: boolean; form?: GoogleFormCriado; erro?: string }> {
+  try {
+    const idLimpo = extrairFormId(formId);
+    if (!idLimpo) {
+      return { valido: false, erro: 'ID ou Link do formulário não informado.' };
+    }
+
+    const res = await fetch(`https://forms.googleapis.com/v1/forms/${idLimpo}`, {
+      headers: { Authorization: `Bearer ${accessToken}` }
+    });
+
+    if (!res.ok) {
+      if (res.status === 404) {
+        return { 
+          valido: false, 
+          erro: 'Formulário não encontrado no Google Drive (foi excluído da lixeira ou o ID está incorreto).' 
+        };
+      }
+      const erroJson = await res.json().catch(() => ({}));
+      return { 
+        valido: false, 
+        erro: erroJson?.error?.message || `Erro ao validar formulário (${res.statusText}).` 
+      };
+    }
+
+    const data = await res.json();
+    return {
+      valido: true,
+      form: {
+        formId: data.formId || idLimpo,
+        titulo: data.info?.title || 'DeskOps TI - Abertura de Chamado',
+        responderUri: data.responderUri || `https://docs.google.com/forms/d/e/${idLimpo}/viewform`,
+        editUri: `https://docs.google.com/forms/d/${idLimpo}/edit`
+      }
+    };
+  } catch (err: any) {
+    return { valido: false, erro: err?.message || 'Falha ao conectar com o Google Forms.' };
+  }
+}
+
+export interface ArquivoFormDrive {
+  id: string;
+  name: string;
+  modifiedTime?: string;
+  webViewLink?: string;
+}
+
+/**
+ * Lista todos os formulários Google existentes no Google Drive do usuário
+ */
+export async function listarFormulariosDoDrive(accessToken: string): Promise<ArquivoFormDrive[]> {
+  try {
+    const query = encodeURIComponent("mimeType='application/vnd.google-apps.form' and trashed=false");
+    const url = `https://www.googleapis.com/drive/v3/files?q=${query}&fields=files(id,name,modifiedTime,webViewLink)&pageSize=25&orderBy=modifiedTime desc`;
+
+    const res = await fetch(url, {
+      headers: { Authorization: `Bearer ${accessToken}` }
+    });
+
+    if (!res.ok) {
+      return [];
+    }
+
+    const data = await res.json();
+    return data.files || [];
+  } catch (err) {
+    console.error('Erro ao listar formulários do Drive:', err);
+    return [];
+  }
 }

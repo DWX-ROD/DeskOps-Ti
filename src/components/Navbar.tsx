@@ -12,7 +12,8 @@ import {
   Moon, 
   Sun,
   Layers,
-  FileSpreadsheet
+  FileSpreadsheet,
+  FileText
 } from 'lucide-react';
 import { Tecnico } from '../types';
 import { LISTA_TECNICOS_DISPONIVEIS } from '../data/initialData';
@@ -37,6 +38,8 @@ interface NavbarProps {
   setDarkMode: (val: boolean) => void;
   isSheetsConnected?: boolean;
   onOpenSheetsModal: () => void;
+  isFormsConnected?: boolean;
+  onOpenFormsModal?: () => void;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -49,7 +52,9 @@ export const Navbar: React.FC<NavbarProps> = ({
   darkMode,
   setDarkMode,
   isSheetsConnected = false,
-  onOpenSheetsModal
+  onOpenSheetsModal,
+  isFormsConnected = false,
+  onOpenFormsModal
 }) => {
   const [showTecnicoDropdown, setShowTecnicoDropdown] = useState(false);
 
@@ -190,6 +195,25 @@ export const Navbar: React.FC<NavbarProps> = ({
               <span className="hidden sm:inline">Google Sheets</span>
               {isSheetsConnected ? (
                 <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+              ) : (
+                <span className="text-[10px] text-slate-400 hidden md:inline">Desconectado</span>
+              )}
+            </button>
+
+            {/* Google Forms Trigger Button */}
+            <button
+              onClick={onOpenFormsModal}
+              className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border text-xs font-medium transition ${
+                isFormsConnected
+                  ? 'bg-purple-950/60 hover:bg-purple-900/60 text-purple-300 border-purple-700/60'
+                  : 'bg-slate-800/80 hover:bg-slate-800 text-slate-300 border-slate-700'
+              }`}
+              title={isFormsConnected ? 'Google Forms Conectado (Clique para gerenciar ou recriar como Admin)' : 'Configurar / Criar Google Forms Oficial'}
+            >
+              <FileText className="w-4 h-4 text-purple-400" />
+              <span className="hidden sm:inline">Google Forms</span>
+              {isFormsConnected ? (
+                <span className="w-2 h-2 rounded-full bg-purple-400 animate-pulse" />
               ) : (
                 <span className="text-[10px] text-slate-400 hidden md:inline">Desconectado</span>
               )}

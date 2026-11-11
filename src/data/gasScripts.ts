@@ -32,7 +32,8 @@ const CONFIG = {
   EMAIL_SUPORTE: 'suporte-ti@suaempresa.com.br',
   // E-mails autorizados com papel de ADMINISTRADOR (podem adicionar/remover setores e colaboradores)
   EMAILS_ADMINISTRADORES: [
-    'rodrigohf.sornn@gmail.com', // Administrador Master
+    'rodhf.sett@gmail.com', // Administrador Master
+    'rodrigohf.sornn@gmail.com',
     'admin-ti@suaempresa.com.br'
   ]
 };
@@ -314,20 +315,21 @@ function onFormSubmit(e) {
   // 1. Mapeamento de campos vindos de e.namedValues (Google Forms vinculado)
   if (e && e.namedValues) {
     const nv = e.namedValues;
-    nomeSolicitante = (nv['Nome Completo do Solicitante'] || nv['Nome Completo'] || nv['Nome'] || ['Colaborador'])[0];
+    setor = (nv['Setor / Departamento Solicitante'] || nv['Setor / Departamento'] || nv['Setor'] || nv['Departamento'] || ['TI'])[0];
+    descricao = (nv['O que o seu Setor precisa? (Descrição do problema)'] || nv['Descrição Detalhada do Problema'] || nv['Descrição'] || nv['Descricao'] || [''])[0];
+    const contato = (nv['Colaborador / Ramal de Contato no Setor (Opcional)'] || nv['Nome Completo do Solicitante'] || nv['Nome Completo'] || nv['Nome'] || [''])[0];
+    nomeSolicitante = contato && contato.trim() ? contato.trim() : ('Setor ' + setor);
     emailSolicitante = (nv['E-mail Corporativo do Solicitante'] || nv['E-mail do Solicitante'] || nv['E-mail'] || nv['Email'] || [''])[0];
-    setor = (nv['Setor / Departamento'] || nv['Setor'] || nv['Departamento'] || ['Geral'])[0];
-    categoria = (nv['Categoria do Problema'] || nv['Categoria'] || nv['Problema'] || ['Outros'])[0];
-    descricao = (nv['Descrição Detalhada do Problema'] || nv['Descrição'] || nv['Descricao'] || [''])[0];
+    categoria = (nv['Categoria do Problema'] || nv['Categoria'] || nv['Problema'] || ['Geral / Atendimento ao Setor'])[0];
     urgenciaBruta = (nv['Nível de Urgência / Impacto Percebido'] || nv['Urgência'] || nv['Prioridade Sugerida'] || ['Média'])[0];
   } else if (e && e.values) {
     // Array posicional caso o evento seja acionado por range simples
-    emailSolicitante = e.values[1] || '';
-    nomeSolicitante = e.values[2] || 'Colaborador';
-    setor = e.values[3] || 'Geral';
-    categoria = e.values[4] || 'Outros';
-    descricao = e.values[5] || '';
-    urgenciaBruta = e.values[6] || 'Média';
+    setor = e.values[1] || 'TI';
+    descricao = e.values[2] || '';
+    const contato = e.values[3] || '';
+    nomeSolicitante = contato ? contato : ('Setor ' + setor);
+    categoria = 'Geral / Atendimento ao Setor';
+    urgenciaBruta = 'Média';
   }
 
   // Se o formulário capturou o e-mail do respondente nativamente via Google Workspace
@@ -1690,21 +1692,13 @@ Siga este passo a passo para colocar o sistema em produção na sua organizaçã
 
 ---
 
-### Passo 5: Vincular o Formulário do Google Forms (Para Chamados)
-1. Na sua planilha, clique em **Ferramentas > Criar um formulário**.
-2. Crie as seguintes perguntas no formulário:
-   - **Nome Completo** (Resposta curta - Obrigatório)
-   - **E-mail** (Resposta curta - Obrigatório)
-   - **Setor / Departamento** (Lista suspensa contendo os 27 setores da empresa)
-   - **Categoria do Problema** (Múltipla escolha com ícones amigáveis):
-     - 🔴 Sem internet / Rede
-     - 🖨️ Impressora não funciona
-     - 💻 Computador não liga / Lento
-     - 🔑 Acessos & Senhas
-     - 📦 Instalação de Software
-     - ⚙️ Outros
-   - **Descrição Detalhada** (Parágrafo - Obrigatório)
-   - **Prioridade Sugerida** (Múltipla escolha: Baixa, Média, Alta, Crítica)
+### Passo 5: Vincular o Formulário do Google Forms (Para Chamados por Setor)
+1. Na sua planilha, clique em **Ferramentas > Criar um formulário** (ou use o gerador automático \`Criar_Formulario.gs\`).
+2. Crie as seguintes perguntas simplificadas para diminuir a dificuldade dos colaboradores:
+   - **Setor / Departamento Solicitante** (Lista suspensa contendo os 27 setores da empresa - Obrigatório)
+   - **O que o seu Setor precisa? (Descrição do problema)** (Parágrafo - Obrigatório)
+   - **Colaborador / Ramal de Contato no Setor** (Resposta curta - Opcional)
+*Sem termos técnicos confusos ou seleção de urgência: os colaboradores só precisam informar o Setor e a necessidade, enquanto a equipe de TI realiza a triagem.*
 
 ---
 
@@ -1748,30 +1742,18 @@ function criarFormularioOficialChamados() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   
   // 1. Cria o formulário no Google Drive
-  const form = FormApp.create('DeskOps TI - Abertura de Chamado');
-  form.setTitle('DeskOps TI - Abertura de Chamado');
-  form.setDescription('Canal oficial de atendimento e suporte técnico da empresa. Ao submeter este formulário, um protocolo único (CH-YYYY-XXXX) será gerado automaticamente com cálculo de SLA e enviado ao seu e-mail corporativo.');
+  const form = FormApp.create('DeskOps TI - Abertura de Chamado por Setor');
+  form.setTitle('DeskOps TI - Abertura de Chamado por Setor');
+  form.setDescription('Canal oficial de suporte técnico. Basta selecionar o seu Setor e descrever o que você precisa. A equipe de TI fará a triagem, priorização e o atendimento.');
   
-  form.setCollectEmail(true);
+  form.setCollectEmail(false);
   form.setAllowResponseEdits(false);
   form.setLimitOneResponsePerUser(false);
 
-  // 1. Nome Completo do Solicitante (Texto curto)
-  const itemNome = form.addTextItem();
-  itemNome.setTitle('Nome Completo');
-  itemNome.setHelpText('Informe seu nome e sobrenome.');
-  itemNome.setRequired(true);
-
-  // 2. E-mail do Solicitante (Texto curto)
-  const itemEmail = form.addTextItem();
-  itemEmail.setTitle('E-mail do Solicitante');
-  itemEmail.setHelpText('Seu e-mail corporativo para recebimento do protocolo e acompanhamento.');
-  itemEmail.setRequired(true);
-
-  // 3. Setor / Departamento (Lista suspensa)
+  // 1. Setor / Departamento Solicitante (Lista suspensa obrigatória)
   const itemSetor = form.addListItem();
-  itemSetor.setTitle('Setor / Departamento');
-  itemSetor.setHelpText('Selecione a sua área ou departamento de trabalho.');
+  itemSetor.setTitle('Setor / Departamento Solicitante');
+  itemSetor.setHelpText('Selecione o setor da sua empresa que necessita de suporte técnico.');
   itemSetor.setChoiceValues([
     'OBIC',
     'RH',
@@ -1803,37 +1785,17 @@ function criarFormularioOficialChamados() {
   ]);
   itemSetor.setRequired(true);
 
-  // 4. Categoria do Problema (Lista suspensa)
-  const itemCat = form.addListItem();
-  itemCat.setTitle('Categoria do Problema');
-  itemCat.setHelpText('Selecione o tipo de incidente para direcionamento correto.');
-  itemCat.setChoiceValues([
-    '💻 Hardware (Computador, Notebook, Monitor, Periféricos)',
-    '🌐 Redes / Internet / Wi-Fi',
-    '🔐 Acessos, Senhas & Permissões',
-    '🖨️ Impressoras & Digitalização',
-    '⚙️ Software, Sistemas & ERP',
-    '📦 Outros Assuntos'
-  ]);
-  itemCat.setRequired(true);
-
-  // 5. Descrição Detalhada do Problema (Texto longo)
+  // 2. O que o seu Setor precisa? (Descrição do problema - Texto longo obrigatório)
   const itemDesc = form.addParagraphTextItem();
-  itemDesc.setTitle('Descrição Detalhada do Problema');
-  itemDesc.setHelpText('Explique detalhadamente o que aconteceu, mensagens de erro que apareceram e o que você estava tentando fazer.');
+  itemDesc.setTitle('O que o seu Setor precisa? (Descrição do problema)');
+  itemDesc.setHelpText('Descreva em poucas palavras o que está acontecendo (ex: computador não liga, impressora travou papel, sem internet no setor).');
   itemDesc.setRequired(true);
 
-  // 6. Nível de Urgência / Impacto Percebido (Múltipla escolha)
-  const itemUrg = form.addMultipleChoiceItem();
-  itemUrg.setTitle('Nível de Urgência / Impacto Percebido');
-  itemUrg.setHelpText('Defina o impacto deste problema em seu trabalho. Isso calculará o SLA de atendimento.');
-  itemUrg.setChoiceValues([
-    'Baixa (Até 24h - Dúvida geral ou problema pontual sem parada de trabalho)',
-    'Média (Até 8h - Trabalho prejudicado, porém há alternativas temporárias)',
-    'Alta (Até 4h - Máquina ou sistema indispensável parado para um colaborador)',
-    'Crítica (Até 2h - Parada total de um departamento, servidor ou diretoria)'
-  ]);
-  itemUrg.setRequired(true);
+  // 3. Colaborador / Ramal de Contato no Setor (Texto curto opcional)
+  const itemContato = form.addTextItem();
+  itemContato.setTitle('Colaborador / Ramal de Contato no Setor (Opcional)');
+  itemContato.setHelpText('Se desejar, informe seu nome ou ramal para facilitar o contato pelo técnico de TI.');
+  itemContato.setRequired(false);
 
   // 2. VINCULAR O FORMULÁRIO À PLANILHA ATIVA COMO DESTINO DE RESPOSTAS
   form.setDestination(FormApp.DestinationType.SPREADSHEET, ss.getId());

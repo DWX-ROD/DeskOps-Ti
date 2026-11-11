@@ -14,6 +14,7 @@ import { NovoChamadoView } from './components/NovoChamadoView';
 import { CentralCodigosView } from './components/CentralCodigosView';
 import { SimuladorEmailView } from './components/SimuladorEmailView';
 import { GoogleSheetsModal } from './components/GoogleSheetsModal';
+import { GoogleFormsModal } from './components/GoogleFormsModal';
 import { SheetsConnectionBanner } from './components/SheetsConnectionBanner';
 import { DestructiveConfirmModal } from './components/DestructiveConfirmModal';
 
@@ -26,7 +27,8 @@ import {
   TECNICO_PADRAO,
   SETORES_EMPRESA,
   normalizarSetor,
-  isSetorLegadoProibido
+  isSetorLegadoProibido,
+  EMAILS_ADMINISTRADORES
 } from './data/initialData';
 import { calcularSla } from './utils/sla';
 import { CheckCircle2, AlertCircle } from 'lucide-react';
@@ -44,6 +46,7 @@ import {
   removerFuncionarioDaPlanilha,
   NOMES_ABAS
 } from './services/googleSheets';
+import { GoogleFormCriado } from './services/googleForms';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<TabType>('chamados');
@@ -62,6 +65,10 @@ export default function App() {
   const [modalSheetsAberto, setModalSheetsAberto] = useState<boolean>(false);
   const [isSincronizando, setIsSincronizando] = useState<boolean>(false);
   const [ultimaSincronizacao, setUltimaSincronizacao] = useState<Date | null>(null);
+
+  // Estados da Conexão com Google Forms Oficial
+  const [formOficial, setFormOficial] = useState<GoogleFormCriado | null>(null);
+  const [modalFormsAberto, setModalFormsAberto] = useState<boolean>(false);
 
   // Modal de Confirmação para Operações Destrutivas (Requisito Workspace API)
   const [modalDestrutivo, setModalDestrutivo] = useState<{
@@ -113,11 +120,42 @@ export default function App() {
     );
   }, []);
 
+  // Restaura Google Form salvo no localStorage
+  useEffect(() => {
+    const salvo = localStorage.getItem('deskops_google_form');
+    if (salvo) {
+      try {
+        setFormOficial(JSON.parse(salvo));
+      } catch (e) {
+        console.error('Erro ao ler deskops_google_form salvo:', e);
+      }
+    }
+  }, []);
+
+  const handleSalvarFormOficial = (form: GoogleFormCriado | null) => {
+    setFormOficial(form);
+    if (form) {
+      localStorage.setItem('deskops_google_form', JSON.stringify(form));
+    } else {
+      localStorage.removeItem('deskops_google_form');
+    }
+  };
+
   // Inicializa listener de autenticação Google e restaura conexão salva com a planilha
   useEffect(() => {
     const unsubscribe = initAuth(
       async (user, token) => {
         setUserGoogle(user);
+        if (user && user.email) {
+          const emailLower = user.email.toLowerCase();
+          const isAdmin = EMAILS_ADMINISTRADORES.some((adm) => adm.toLowerCase() === emailLower);
+          setTecnicoAtivo({
+            nome: user.displayName || user.email.split('@')[0],
+            email: user.email,
+            cargo: isAdmin ? 'Especialista em TI (Admin Master)' : 'Técnico de Suporte',
+            papel: isAdmin ? 'admin' : 'tecnico'
+          });
+        }
         const savedSheetId = localStorage.getItem('deskops_spreadsheet_id');
         if (savedSheetId && token) {
           try {
@@ -864,7 +902,7 @@ export default function App() {
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 transition-colors flex flex-col font-sans">
       
-      {/* Top Navbar com gatilho Google Sheets */}
+      {/* Top Navbar com gatilho Google Sheets e Google Forms */}
       <Navbar
         activeTab={activeTab}
         setActiveTab={setActiveTab}
@@ -876,6 +914,8 @@ export default function App() {
         setDarkMode={setDarkMode}
         isSheetsConnected={!!planilhaAtiva}
         onOpenSheetsModal={() => setModalSheetsAberto(true)}
+        isFormsConnected={Boolean(formOficial)}
+        onOpenFormsModal={() => setModalFormsAberto(true)}
       />
 
       {/* Banner de Status da Conexão em Tempo Real com Google Sheets */}
@@ -958,6 +998,10 @@ export default function App() {
             onIrParaConsulta={(protocolo) => {
               setActiveTab('consulta');
             }}
+            formOficial={formOficial}
+            onSalvarFormOficial={handleSalvarFormOficial}
+            onOpenFormsModal={() => setModalFormsAberto(true)}
+            tecnicoAtivo={tecnicoAtivo}
           />
         )}
 
@@ -987,6 +1031,18 @@ export default function App() {
         ultimaSincronizacao={ultimaSincronizacao}
       />
 
+      {/* Modal de Conexão e Gerenciamento do Google Forms */}
+      <GoogleFormsModal
+        isOpen={modalFormsAberto}
+        onClose={() => setModalFormsAberto(false)}
+        formOficial={formOficial}
+        onSalvarFormOficial={handleSalvarFormOficial}
+        tecnicoAtivo={tecnicoAtivo}
+        userGoogle={userGoogle}
+        planilhaAtiva={planilhaAtiva}
+        onExibirNotificacao={exibirNotificacao}
+      />
+
       {/* Modal de Confirmação para Operações Destrutivas */}
       <DestructiveConfirmModal
         isOpen={modalDestrutivo.isOpen}
@@ -1003,7 +1059,7 @@ export default function App() {
       <footer className="border-t border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/60 py-4 px-6 text-center text-xs text-slate-500 dark:text-slate-400">
         <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-2">
           <span>
-            DeskOps TI · Sistema de Helpdesk e Inventário conectado com Google Sheets (Google Workspace)
+            DeskOps TI · Sistema de Helpdesk e Inventário conectado com Google Workspace
           </span>
           <div className="flex items-center gap-4 text-xs">
             <button
@@ -1011,6 +1067,13 @@ export default function App() {
               className="text-emerald-600 dark:text-emerald-400 hover:underline font-medium"
             >
               {planilhaAtiva ? '🟢 Google Sheets Conectado' : 'Conectar Planilha'}
+            </button>
+            <span className="text-slate-300 dark:text-slate-700">·</span>
+            <button
+              onClick={() => setModalFormsAberto(true)}
+              className="text-purple-600 dark:text-purple-400 hover:underline font-medium"
+            >
+              {formOficial ? '🟣 Google Forms Conectado' : 'Gerenciar Forms'}
             </button>
             <span className="text-slate-300 dark:text-slate-700">·</span>
             <button

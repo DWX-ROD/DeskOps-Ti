@@ -399,23 +399,17 @@ export async function sincronizarAbaFormularioParaChamados(
     let colCarimbo = cabecalhos.findIndex((h: string) => h.includes('carimbo') || h.includes('data') || h.includes('timestamp'));
     if (colCarimbo === -1) colCarimbo = 0;
 
-    let colNome = cabecalhos.findIndex((h: string) => h.includes('nome') || h.includes('solicitante'));
-    if (colNome === -1) colNome = 1;
+    let colSetor = cabecalhos.findIndex((h: string) => h.includes('setor') || h.includes('departamento') || h.includes('área') || h.includes('area'));
+
+    let colDescricao = cabecalhos.findIndex((h: string) => h.includes('descri') || h.includes('detalhe') || h.includes('mensagem') || h.includes('precisa') || h.includes('problema'));
+
+    let colNome = cabecalhos.findIndex((h: string) => h.includes('nome') || h.includes('solicitante') || h.includes('colaborador') || h.includes('contato') || h.includes('ramal'));
 
     let colEmail = cabecalhos.findIndex((h: string) => h.includes('e-mail') || h.includes('email') || h.includes('endereço'));
-    if (colEmail === -1) colEmail = 2;
 
-    let colSetor = cabecalhos.findIndex((h: string) => h.includes('setor') || h.includes('departamento') || h.includes('área') || h.includes('area'));
-    if (colSetor === -1) colSetor = 3;
-
-    let colCategoria = cabecalhos.findIndex((h: string) => h.includes('categoria') || h.includes('problema') || h.includes('tipo'));
-    if (colCategoria === -1) colCategoria = 4;
-
-    let colDescricao = cabecalhos.findIndex((h: string) => h.includes('descri') || h.includes('detalhe') || h.includes('mensagem'));
-    if (colDescricao === -1) colDescricao = 5;
+    let colCategoria = cabecalhos.findIndex((h: string) => h.includes('categoria') || h.includes('tipo'));
 
     let colUrgencia = cabecalhos.findIndex((h: string) => h.includes('urgência') || h.includes('urgencia') || h.includes('prioridade') || h.includes('impacto'));
-    if (colUrgencia === -1) colUrgencia = 6;
 
     // 5. Itera sobre as respostas e gera os novos chamados
     const novasLinhas: any[][] = [];
@@ -427,13 +421,26 @@ export async function sincronizarAbaFormularioParaChamados(
         continue;
       }
 
-      const carimboOriginal = String(row[colCarimbo] || '').trim();
-      const solicitante = String(row[colNome] || 'Colaborador').trim();
-      const email = String(row[colEmail] || '').trim();
-      const setorBruto = String(row[colSetor] || 'TI').trim();
-      const categoriaBruta = String(row[colCategoria] || '⚙️ Outros').trim();
-      const descricao = String(row[colDescricao] || '').trim();
-      const urgenciaBruta = String(row[colUrgencia] || 'Média').trim();
+      const carimboOriginal = colCarimbo !== -1 && row[colCarimbo] ? String(row[colCarimbo]).trim() : '';
+
+      // Setor identificado
+      const setorBruto = (colSetor !== -1 && row[colSetor]) 
+        ? String(row[colSetor]).trim() 
+        : (row[1] ? String(row[1]).trim() : 'TI');
+      const setor = normalizarSetor(setorBruto);
+
+      // Descrição do problema / O que o setor precisa
+      const descricao = (colDescricao !== -1 && row[colDescricao]) 
+        ? String(row[colDescricao]).trim() 
+        : (row[2] ? String(row[2]).trim() : 'Solicitação de suporte aberta pelo setor');
+
+      // Solicitante: nome informado ou padrão "Setor [SETOR]"
+      const nomeContato = (colNome !== -1 && row[colNome]) ? String(row[colNome]).trim() : '';
+      const solicitante = nomeContato || `Setor ${setor}`;
+
+      const email = (colEmail !== -1 && row[colEmail]) ? String(row[colEmail]).trim() : '';
+      const categoriaBruta = (colCategoria !== -1 && row[colCategoria]) ? String(row[colCategoria]).trim() : 'Geral / Suporte ao Setor';
+      const urgenciaBruta = (colUrgencia !== -1 && row[colUrgencia]) ? String(row[colUrgencia]).trim() : 'Média';
 
       const digitosData = carimboOriginal.replace(/\D/g, '');
       const emLower = email.toLowerCase();
@@ -454,9 +461,6 @@ export async function sincronizarAbaFormularioParaChamados(
       // Novo chamado detectado! Gera sequencial no padrão CH-YYYY-XXXX (ex: CH-2026-0045)
       maxSequencial++;
       const protocolo = `CH-${anoAtual}-${String(maxSequencial).padStart(4, '0')}`;
-
-      // Setor normalizado para um dos 27 oficiais
-      const setor = normalizarSetor(setorBruto);
 
       // Prioridade e SLA
       let prioridade: PrioridadeChamado = 'Média';
