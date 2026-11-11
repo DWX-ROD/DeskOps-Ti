@@ -514,3 +514,67 @@ export function isSetorLegadoProibido(setor: string): boolean {
   return SETORES_LEGADOS_PROIBIDOS.includes(lower);
 }
 
+export interface PresetsSetores {
+  id: string;
+  nome: string;
+  descricao: string;
+  setores: string[];
+}
+
+export const PRESETS_SETORES: PresetsSetores[] = [
+  {
+    id: 'orgao_publico',
+    nome: 'Órgão Público / Governamental (27 Setores)',
+    descricao: 'Estrutura com secretarias, gabinete, ouvidoria, patrimônio e conselhos.',
+    setores: [
+      'OBIC', 'RH', 'GPAI', 'SECEXECC', 'GCOM', 'PLAN', 'OUVIDORIA',
+      'GTEC', 'GEDH', 'GPC', 'FOMENTO', 'TI', 'CPECV', 'CPAD',
+      'PRESTAÇÃO DE CONTAS', 'PATRIMONIO', 'JURIDICO', 'FINANCEIRO',
+      'SECEXECG', 'GABINETE', 'GADM', 'MAPA CULTURAL', 'GCICO',
+      'ARQUITETURA', 'COMED', 'GPE', 'CASA DOS CONSELHOS'
+    ]
+  },
+  {
+    id: 'corporativo',
+    nome: 'Empresa Corporativa / Geral (Padrão)',
+    descricao: 'Estrutura para médias e grandes empresas comerciais ou de serviços.',
+    setores: [
+      'DIRETORIA', 'TI & INFRAESTRUTURA', 'RECURSOS HUMANOS', 'FINANCEIRO & CONTÁBIL',
+      'COMERCIAL / VENDAS', 'MARKETING & DESIGN', 'JURÍDICO & COMPLIANCE',
+      'OPERAÇÕES & LOGÍSTICA', 'COMPRAS & SUPRIMENTOS', 'ATENDIMENTO AO CLIENTE'
+    ]
+  },
+  {
+    id: 'saude',
+    nome: 'Hospitalar & Saúde',
+    descricao: 'Estrutura focada em clínicas, policlínicas e ambientes hospitalares.',
+    setores: [
+      'RECEPÇÃO & INTERNAÇÃO', 'TRIAGEM / CLASSIFICAÇÃO', 'EMERGÊNCIA / PRONTO SOCORRO',
+      'UTI & CTI', 'ENFERMAGEM', 'FARMÁCIA CENTRAL', 'CENTRO CIRÚRGICO',
+      'ALMOXARIFADO DE MATERIAIS', 'TI HOSPITALAR', 'FATURAMENTO & CONVÊNIOS',
+      'DIREÇÃO CLÍNICA'
+    ]
+  },
+  {
+    id: 'educacao',
+    nome: 'Educação & Ensino',
+    descricao: 'Estrutura para colégios, universidades, faculdades e institutos de ensino.',
+    setores: [
+      'DIREÇÃO & REITORIA', 'SECRETARIA ESCOLAR', 'COORDENAÇÃO PEDAGÓGICA',
+      'SALA DOS PROFESSORES', 'BIBLIOTECA & ACERVO', 'LABORATÓRIOS DE INFORMÁTICA',
+      'FINANCEIRO & BOLSAS', 'SERVIÇOS GERAIS & MANUTENÇÃO', 'TI EDUCACIONAL'
+    ]
+  },
+  {
+    id: 'varejo',
+    nome: 'Comércio & Varejo',
+    descricao: 'Estrutura para lojas, centros de distribuição e redes de comércio.',
+    setores: [
+      'FRENTE DE CAIXA / PDV', 'VENDAS & BALCÃO', 'ESTOQUE & EXPEDIÇÃO',
+      'TI / AUTOMAÇÃO COMERCIAL', 'SAC & TROCAS', 'FINANCEIRO & CRÉDITO',
+      'ADMINISTRATIVO & GERÊNCIA', 'E-COMMERCE & MARKETPLACE'
+    ]
+  }
+];
+
+

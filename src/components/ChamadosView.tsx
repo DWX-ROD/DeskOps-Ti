@@ -124,8 +124,8 @@ export const ChamadosView: React.FC<ChamadosViewProps> = ({
           {planilhaConectada && (
             <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/60 text-emerald-800 dark:text-emerald-300 text-xs font-medium shadow-2xs">
               <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse shrink-0" />
-              <span className="hidden sm:inline">Google Forms:</span>
-              <span className="font-semibold text-emerald-900 dark:text-emerald-100">Respostas ao formulário 1</span>
+              <span className="hidden sm:inline">Banco Oficial:</span>
+              <span className="font-semibold text-emerald-900 dark:text-emerald-100">DeskOps TI - Banco de Dados</span>
               <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-mono">(Tempo Real)</span>
             </div>
           )}
@@ -135,10 +135,10 @@ export const ChamadosView: React.FC<ChamadosViewProps> = ({
               onClick={onSincronizarPlanilha}
               disabled={isSincronizando}
               className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700/70 text-slate-700 dark:text-slate-200 shadow-2xs transition disabled:opacity-50"
-              title="Busca novas respostas do Google Forms e sincroniza com a planilha"
+              title="Sincronizar dados em tempo real com a planilha Google Sheets"
             >
               <RefreshCw className={`w-3.5 h-3.5 ${isSincronizando ? 'animate-spin text-blue-600' : 'text-slate-500'}`} />
-              <span>{isSincronizando ? 'Sincronizando...' : 'Sincronizar Forms'}</span>
+              <span>{isSincronizando ? 'Sincronizando...' : 'Sincronizar Planilha'}</span>
             </button>
           )}
 
@@ -147,7 +147,7 @@ export const ChamadosView: React.FC<ChamadosViewProps> = ({
             className="flex items-center gap-2 px-3.5 py-2 text-xs font-semibold rounded-lg bg-blue-600 hover:bg-blue-700 text-white shadow-sm transition"
           >
             <Sparkles className="w-4 h-4" />
-            <span>Simular Abertura no Forms</span>
+            <span>Abrir Chamado por Setor</span>
           </button>
         </div>
       </div>

@@ -28,13 +28,18 @@ export const SheetsConnectionBanner: React.FC<SheetsConnectionBannerProps> = ({
           <div className="flex items-center gap-2.5">
             <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shrink-0" />
             <div className="flex items-center gap-2">
-              <span className="font-semibold text-white">Google Sheets Ativo:</span>
-              <span className="text-emerald-300 font-medium truncate max-w-[200px] sm:max-w-xs">
+              <span className="font-semibold text-white flex items-center gap-1.5">
+                <span className="text-[10px] px-1.5 py-0.2 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 font-bold">
+                  🔒 Oficial Fixo
+                </span>
+                <span>Banco de Dados:</span>
+              </span>
+              <span className="text-emerald-300 font-semibold truncate max-w-[200px] sm:max-w-xs">
                 {planilhaAtiva.nome}
               </span>
               <span className="hidden md:inline text-emerald-500/80">|</span>
               <span className="hidden md:inline text-[11px] text-emerald-300/80">
-                4 Abas DeskOps + Respostas ao formulário 1 (Auto-sync)
+                4 Abas DeskOps + Respostas Forms
               </span>
             </div>
           </div>
@@ -61,6 +66,7 @@ export const SheetsConnectionBanner: React.FC<SheetsConnectionBannerProps> = ({
               target="_blank"
               rel="noopener noreferrer"
               className="flex items-center gap-1 px-2.5 py-1 rounded-md bg-emerald-900/50 hover:bg-emerald-800/60 text-emerald-200 hover:text-white transition"
+              title="Abrir planilha oficial no Google Sheets"
             >
               <ExternalLink className="w-3 h-3" />
               <span>Abrir Planilha</span>
@@ -69,10 +75,10 @@ export const SheetsConnectionBanner: React.FC<SheetsConnectionBannerProps> = ({
             <button
               onClick={onOpenModal}
               className="flex items-center gap-1 px-2.5 py-1 rounded-md bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white transition"
-              title="Gerenciar conexão ou trocar planilha"
+              title="Visualizar status do banco de dados oficial (bloqueado para uso exclusivo)"
             >
               <Settings2 className="w-3 h-3" />
-              <span>Configurar</span>
+              <span>Status do Banco</span>
             </button>
           </div>
 

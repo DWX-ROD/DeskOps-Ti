@@ -53,6 +53,8 @@ export const CABECALHOS = {
   ]
 };
 
+export const NOME_PLANILHA_OFICIAL = 'DeskOps TI - Banco de Dados';
+
 export interface PlanilhaMetadados {
   id: string;
   nome: string;
@@ -68,11 +70,63 @@ export interface ArquivoDrive {
 }
 
 /**
+ * Localiza a planilha oficial ou customizada no Google Drive do usuário ou cria se não existir.
+ * Permite que novos usuários vinculem a sua própria planilha ao baixar pelo GitHub.
+ */
+export async function obterOuVincularPlanilhaOficial(
+  accessToken: string,
+  forcarBuscaDrive: boolean = false,
+  planilhaIdEspecifica?: string
+): Promise<PlanilhaMetadados> {
+  const targetId = planilhaIdEspecifica || localStorage.getItem('deskops_spreadsheet_id');
+
+  // 1. Tenta carregar pelo ID especificado ou salvo caso não seja uma busca forçada
+  if (targetId && !forcarBuscaDrive) {
+    try {
+      const meta = await obterEGarantirEstruturaPlanilha(targetId, accessToken);
+      localStorage.setItem('deskops_spreadsheet_id', meta.id);
+      return meta;
+    } catch (err) {
+      console.warn('ID salvo da planilha não pôde ser aberto, buscando pelo nome no Drive...', err);
+    }
+  }
+
+  // 2. Busca no Google Drive pelo nome salvo customizado ou padrão 'DeskOps TI - Banco de Dados'
+  const nomePlanilha = localStorage.getItem('deskops_spreadsheet_nome') || NOME_PLANILHA_OFICIAL;
+  try {
+    const query = encodeURIComponent(
+      `name = '${nomePlanilha}' and mimeType='application/vnd.google-apps.spreadsheet' and trashed=false`
+    );
+    const url = `https://www.googleapis.com/drive/v3/files?q=${query}&fields=files(id,name,modifiedTime,webViewLink)&orderBy=modifiedTime desc`;
+    const res = await fetch(url, {
+      headers: { Authorization: `Bearer ${accessToken}` }
+    });
+
+    if (res.ok) {
+      const data = await res.json();
+      if (data.files && data.files.length > 0) {
+        const file = data.files[0];
+        localStorage.setItem('deskops_spreadsheet_id', file.id);
+        const meta = await obterEGarantirEstruturaPlanilha(file.id, accessToken);
+        return meta;
+      }
+    }
+  } catch (err) {
+    console.warn('Erro ao buscar planilha pelo nome:', err);
+  }
+
+  // 3. Se não encontrou no Drive, cria a planilha
+  const nova = await criarPlanilhaBancoDeDados(accessToken, nomePlanilha);
+  localStorage.setItem('deskops_spreadsheet_id', nova.id);
+  return nova;
+}
+
+/**
  * Cria uma nova planilha no Google Drive formatada com as 4 abas estruturadas
  */
 export async function criarPlanilhaBancoDeDados(
   accessToken: string,
-  titulo: string = 'DeskOps TI - Banco de Dados'
+  titulo: string = NOME_PLANILHA_OFICIAL
 ): Promise<PlanilhaMetadados> {
   const url = 'https://sheets.googleapis.com/v4/spreadsheets';
 

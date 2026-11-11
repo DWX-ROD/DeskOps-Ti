@@ -13,10 +13,11 @@ import {
   Sun,
   Layers,
   FileSpreadsheet,
-  FileText
+  Terminal
 } from 'lucide-react';
 import { Tecnico } from '../types';
 import { LISTA_TECNICOS_DISPONIVEIS } from '../data/initialData';
+import { PWAInstallButton } from './PWAInstallButton';
 
 export type TabType = 
   | 'chamados' 
@@ -25,7 +26,8 @@ export type TabType =
   | 'consulta' 
   | 'novo_chamado' 
   | 'codigos' 
-  | 'emails';
+  | 'emails'
+  | 'utilidade';
 
 interface NavbarProps {
   activeTab: TabType;
@@ -38,8 +40,7 @@ interface NavbarProps {
   setDarkMode: (val: boolean) => void;
   isSheetsConnected?: boolean;
   onOpenSheetsModal: () => void;
-  isFormsConnected?: boolean;
-  onOpenFormsModal?: () => void;
+  nomeEmpresa?: string;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -53,8 +54,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   setDarkMode,
   isSheetsConnected = false,
   onOpenSheetsModal,
-  isFormsConnected = false,
-  onOpenFormsModal
+  nomeEmpresa = 'DeskOps TI'
 }) => {
   const [showTecnicoDropdown, setShowTecnicoDropdown] = useState(false);
 
@@ -70,15 +70,15 @@ export const Navbar: React.FC<NavbarProps> = ({
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <span className="font-display font-bold text-base tracking-tight text-white">
-                  DeskOps TI
+                <span className="font-display font-bold text-base tracking-tight text-white max-w-[180px] truncate" title={nomeEmpresa}>
+                  {nomeEmpresa}
                 </span>
                 <span className="text-[10px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-300 border border-blue-500/30">
-                  Google Workspace
+                  Workspace
                 </span>
               </div>
               <p className="text-[11px] text-slate-400 font-normal">
-                Helpdesk · Inventário · Apps Script
+                Helpdesk · Inventário · Executável
               </p>
             </div>
           </div>
@@ -150,7 +150,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               }`}
             >
               <PlusCircle className="w-4 h-4" />
-              <span>Abrir Chamado</span>
+              <span>Abrir Chamado por Setor</span>
             </button>
 
             <button
@@ -176,10 +176,28 @@ export const Navbar: React.FC<NavbarProps> = ({
               <Mail className="w-4 h-4" />
               <span>E-mails</span>
             </button>
+
+            <button
+              onClick={() => setActiveTab('utilidade')}
+              className={`flex items-center gap-2 px-3 py-2 rounded-lg transition-all ${
+                activeTab === 'utilidade'
+                  ? 'bg-purple-600 text-white font-semibold shadow-sm'
+                  : 'text-purple-300 hover:text-white hover:bg-slate-800'
+              }`}
+              title="Configurar sua organização, vincular sua própria planilha e instruções de executável GitHub"
+            >
+              <Terminal className="w-4 h-4" />
+              <span>Executável & GitHub</span>
+            </button>
           </nav>
 
           {/* Right Actions: Session Identity & Theme */}
-          <div className="flex items-center gap-2.5 shrink-0">
+          <div className="flex items-center gap-2 shrink-0">
+
+            {/* PWA / Desktop Install Action */}
+            <div className="hidden sm:block">
+              <PWAInstallButton />
+            </div>
 
             {/* Google Sheets Trigger Button */}
             <button
@@ -189,33 +207,14 @@ export const Navbar: React.FC<NavbarProps> = ({
                   ? 'bg-emerald-950/60 hover:bg-emerald-900/60 text-emerald-300 border-emerald-700/60'
                   : 'bg-slate-800/80 hover:bg-slate-800 text-slate-300 border-slate-700'
               }`}
-              title={isSheetsConnected ? 'Google Sheets Conectado (Clique para gerenciar)' : 'Conectar Planilha Google Sheets'}
+              title={isSheetsConnected ? 'Banco de Dados Oficial Vinculado: DeskOps TI - Banco de Dados (Exclusivo)' : 'Conectar Banco de Dados Oficial'}
             >
               <FileSpreadsheet className="w-4 h-4 text-emerald-400" />
-              <span className="hidden sm:inline">Google Sheets</span>
+              <span className="hidden sm:inline">Banco de Dados</span>
               {isSheetsConnected ? (
                 <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
               ) : (
-                <span className="text-[10px] text-slate-400 hidden md:inline">Desconectado</span>
-              )}
-            </button>
-
-            {/* Google Forms Trigger Button */}
-            <button
-              onClick={onOpenFormsModal}
-              className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border text-xs font-medium transition ${
-                isFormsConnected
-                  ? 'bg-purple-950/60 hover:bg-purple-900/60 text-purple-300 border-purple-700/60'
-                  : 'bg-slate-800/80 hover:bg-slate-800 text-slate-300 border-slate-700'
-              }`}
-              title={isFormsConnected ? 'Google Forms Conectado (Clique para gerenciar ou recriar como Admin)' : 'Configurar / Criar Google Forms Oficial'}
-            >
-              <FileText className="w-4 h-4 text-purple-400" />
-              <span className="hidden sm:inline">Google Forms</span>
-              {isFormsConnected ? (
-                <span className="w-2 h-2 rounded-full bg-purple-400 animate-pulse" />
-              ) : (
-                <span className="text-[10px] text-slate-400 hidden md:inline">Desconectado</span>
+                <span className="text-[10px] text-slate-400 hidden md:inline">Conectar</span>
               )}
             </button>
             
@@ -353,6 +352,12 @@ export const Navbar: React.FC<NavbarProps> = ({
             className={`px-3 py-1.5 rounded-lg shrink-0 ${activeTab === 'emails' ? 'bg-blue-600 text-white' : 'text-slate-300'}`}
           >
             E-mails
+          </button>
+          <button
+            onClick={() => setActiveTab('utilidade')}
+            className={`px-3 py-1.5 rounded-lg shrink-0 ${activeTab === 'utilidade' ? 'bg-purple-600 text-white font-semibold' : 'text-purple-300'}`}
+          >
+            Executável & GitHub
           </button>
         </div>
 

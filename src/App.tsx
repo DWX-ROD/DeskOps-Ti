@@ -14,9 +14,9 @@ import { NovoChamadoView } from './components/NovoChamadoView';
 import { CentralCodigosView } from './components/CentralCodigosView';
 import { SimuladorEmailView } from './components/SimuladorEmailView';
 import { GoogleSheetsModal } from './components/GoogleSheetsModal';
-import { GoogleFormsModal } from './components/GoogleFormsModal';
 import { SheetsConnectionBanner } from './components/SheetsConnectionBanner';
 import { DestructiveConfirmModal } from './components/DestructiveConfirmModal';
+import { MinhaUtilidadeView } from './components/MinhaUtilidadeView';
 
 import { Chamado, Funcionario, Equipamento, Movimentacao, Tecnico, StatusChamado } from './types';
 import { 
@@ -36,6 +36,8 @@ import { initAuth, getAccessToken } from './services/auth';
 import { 
   PlanilhaMetadados, 
   obterEGarantirEstruturaPlanilha, 
+  obterOuVincularPlanilhaOficial,
+  NOME_PLANILHA_OFICIAL,
   carregarDadosDoGoogleSheets, 
   gravarNovoChamadoNaPlanilha, 
   atualizarChamadoNaPlanilha, 
@@ -44,15 +46,28 @@ import {
   gravarMovimentacaoNaPlanilha, 
   salvarFuncionarioNaPlanilha, 
   removerFuncionarioDaPlanilha,
+  criarPlanilhaBancoDeDados,
+  listarPlanilhasDoDrive,
+  ArquivoDrive,
   NOMES_ABAS
 } from './services/googleSheets';
-import { GoogleFormCriado } from './services/googleForms';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<TabType>('chamados');
   const [chamados, setChamados] = useState<Chamado[]>(INITIAL_CHAMADOS);
   const [funcionarios, setFuncionarios] = useState<Funcionario[]>(INITIAL_FUNCIONARIOS);
-  const [setores, setSetores] = useState<string[]>(SETORES_EMPRESA);
+  const [setores, setSetores] = useState<string[]>(() => {
+    const salvo = localStorage.getItem('deskops_custom_setores');
+    if (salvo) {
+      try {
+        const parsed = JSON.parse(salvo);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      } catch (e) {}
+    }
+    return SETORES_EMPRESA;
+  });
+  const [nomeEmpresa, setNomeEmpresa] = useState<string>(() => localStorage.getItem('deskops_nome_empresa') || 'DeskOps TI');
+  const [subtituloEmpresa, setSubtituloEmpresa] = useState<string>(() => localStorage.getItem('deskops_subtitulo_empresa') || 'Helpdesk e Inventário');
   const [equipamentos, setEquipamentos] = useState<Equipamento[]>(INITIAL_EQUIPAMENTOS);
   const [movimentacoes, setMovimentacoes] = useState<Movimentacao[]>(INITIAL_MOVIMENTACOES);
   const [tecnicoAtivo, setTecnicoAtivo] = useState<Tecnico>(TECNICO_PADRAO);
@@ -66,9 +81,7 @@ export default function App() {
   const [isSincronizando, setIsSincronizando] = useState<boolean>(false);
   const [ultimaSincronizacao, setUltimaSincronizacao] = useState<Date | null>(null);
 
-  // Estados da Conexão com Google Forms Oficial
-  const [formOficial, setFormOficial] = useState<GoogleFormCriado | null>(null);
-  const [modalFormsAberto, setModalFormsAberto] = useState<boolean>(false);
+
 
   // Modal de Confirmação para Operações Destrutivas (Requisito Workspace API)
   const [modalDestrutivo, setModalDestrutivo] = useState<{
@@ -120,26 +133,7 @@ export default function App() {
     );
   }, []);
 
-  // Restaura Google Form salvo no localStorage
-  useEffect(() => {
-    const salvo = localStorage.getItem('deskops_google_form');
-    if (salvo) {
-      try {
-        setFormOficial(JSON.parse(salvo));
-      } catch (e) {
-        console.error('Erro ao ler deskops_google_form salvo:', e);
-      }
-    }
-  }, []);
 
-  const handleSalvarFormOficial = (form: GoogleFormCriado | null) => {
-    setFormOficial(form);
-    if (form) {
-      localStorage.setItem('deskops_google_form', JSON.stringify(form));
-    } else {
-      localStorage.removeItem('deskops_google_form');
-    }
-  };
 
   // Inicializa listener de autenticação Google e restaura conexão salva com a planilha
   useEffect(() => {
@@ -156,13 +150,12 @@ export default function App() {
             papel: isAdmin ? 'admin' : 'tecnico'
           });
         }
-        const savedSheetId = localStorage.getItem('deskops_spreadsheet_id');
-        if (savedSheetId && token) {
+        if (token) {
           try {
             setIsSincronizando(true);
-            const meta = await obterEGarantirEstruturaPlanilha(savedSheetId, token);
+            const meta = await obterOuVincularPlanilhaOficial(token);
             setPlanilhaAtiva(meta);
-            const dados = await carregarDadosDoGoogleSheets(savedSheetId, token, meta.abasExistentes);
+            const dados = await carregarDadosDoGoogleSheets(meta.id, token, meta.abasExistentes);
             if (dados.chamados.length > 0) {
               setChamados(dados.chamados.map((c) => ({ ...c, setor: normalizarSetor(c.setor) })));
             }
@@ -180,14 +173,14 @@ export default function App() {
 
             if (dados.novosChamadosForms && dados.novosChamadosForms.length > 0) {
               exibirNotificacao(
-                `Google Sheets conectado! ${dados.novosChamadosForms.length} novo(s) chamado(s) sincronizado(s) de "Respostas ao formulário 1".`,
+                `Banco de Dados Oficial Vinculado! ${dados.novosChamadosForms.length} novo(s) chamado(s) sincronizado(s) da planilha.`,
                 'sucesso'
               );
             } else {
-              exibirNotificacao(`Google Sheets conectado: "${meta.nome}" pronto para uso.`);
+              exibirNotificacao(`Banco de Dados Oficial Vinculado: "${meta.nome}" pronto para uso.`);
             }
           } catch (e: any) {
-            console.error('Erro ao restaurar conexão com planilha:', e);
+            console.error('Erro ao vincular planilha oficial:', e);
           } finally {
             setIsSincronizando(false);
           }
@@ -223,12 +216,12 @@ export default function App() {
           planilhaAtiva.abasExistentes
         );
 
-        // Se houver novos chamados vindos do Forms, alerta o técnico em tempo real
+        // Se houver novos chamados sincronizados, alerta o técnico em tempo real
         if (dados.novosChamadosForms && dados.novosChamadosForms.length > 0) {
           const qtd = dados.novosChamadosForms.length;
           const primeiro = dados.novosChamadosForms[0];
           exibirNotificacao(
-            `🔔 ${qtd} novo${qtd > 1 ? 's' : ''} chamado${qtd > 1 ? 's' : ''} do Google Forms: ${primeiro.id} - ${primeiro.nomeSolicitante} (${primeiro.setor})`,
+            `🔔 ${qtd} novo${qtd > 1 ? 's' : ''} chamado${qtd > 1 ? 's' : ''} na planilha: ${primeiro.id} - ${primeiro.nomeSolicitante} (${primeiro.setor})`,
             'sucesso'
           );
         }
@@ -254,15 +247,19 @@ export default function App() {
 
   // Sincroniza dados com o Google Sheets sob demanda
   const handleSincronizarPlanilha = async () => {
-    if (!planilhaAtiva) {
-      setModalSheetsAberto(true);
-      return;
-    }
     try {
       setIsSincronizando(true);
       const token = await getAccessToken();
-      if (!token) throw new Error('Sessão expirada. Faça login com o Google.');
-      const dados = await carregarDadosDoGoogleSheets(planilhaAtiva.id, token, planilhaAtiva.abasExistentes);
+      if (!token) {
+        setModalSheetsAberto(true);
+        throw new Error('Sessão expirada. Faça login com o Google.');
+      }
+      let meta = planilhaAtiva;
+      if (!meta) {
+        meta = await obterOuVincularPlanilhaOficial(token);
+        setPlanilhaAtiva(meta);
+      }
+      const dados = await carregarDadosDoGoogleSheets(meta.id, token, meta.abasExistentes);
       setChamados(dados.chamados.map((c) => ({ ...c, setor: normalizarSetor(c.setor) })));
       setEquipamentos(dados.equipamentos);
       if (dados.funcionarios.length > 0) {
@@ -278,16 +275,105 @@ export default function App() {
 
       if (dados.novosChamadosForms && dados.novosChamadosForms.length > 0) {
         exibirNotificacao(
-          `Sincronizado! ${dados.novosChamadosForms.length} chamado(s) novo(s) importado(s) da aba "Respostas ao formulário 1" com protocolo CH-2026-XXXX.`,
+          `Sincronizado! ${dados.novosChamadosForms.length} chamado(s) importado(s) da aba "Respostas ao formulário 1" com protocolo CH-2026-XXXX.`,
           'sucesso'
         );
       } else {
-        exibirNotificacao('Dados sincronizados com o Google Sheets com sucesso!');
+        exibirNotificacao(`Banco de dados oficial "${meta.nome}" sincronizado com sucesso!`);
       }
     } catch (err: any) {
       exibirNotificacao(err?.message || 'Erro ao sincronizar com Google Sheets.', 'info');
     } finally {
       setIsSincronizando(false);
+    }
+  };
+
+  // Vinculação customizada para quando alguém baixa do GitHub e usa sua própria planilha
+  const handleConectarPlanilhaPorId = async (idOuUrl: string): Promise<boolean> => {
+    try {
+      setIsSincronizando(true);
+      let idLimpo = idOuUrl.trim();
+      const match = idLimpo.match(/\/d\/([a-zA-Z0-9-_]+)/);
+      if (match && match[1]) {
+        idLimpo = match[1];
+      }
+
+      const token = await getAccessToken();
+      if (!token) throw new Error('Faça login com sua conta Google para vincular a planilha.');
+
+      const meta = await obterOuVincularPlanilhaOficial(token, true, idLimpo);
+      setPlanilhaAtiva(meta);
+      localStorage.setItem('deskops_spreadsheet_id', meta.id);
+      localStorage.setItem('deskops_spreadsheet_nome', meta.nome);
+
+      const dados = await carregarDadosDoGoogleSheets(meta.id, token, meta.abasExistentes);
+      if (dados.chamados.length > 0) setChamados(dados.chamados);
+      if (dados.equipamentos.length > 0) setEquipamentos(dados.equipamentos);
+      if (dados.funcionarios.length > 0) setFuncionarios(dados.funcionarios);
+      if (dados.movimentacoes.length > 0) setMovimentacoes(dados.movimentacoes);
+      setUltimaSincronizacao(new Date());
+
+      exibirNotificacao(`Planilha "${meta.nome}" conectada com sucesso!`);
+      return true;
+    } catch (err: any) {
+      exibirNotificacao('Erro ao conectar planilha: ' + (err?.message || 'Verifique o ID e as permissões de acesso.'), 'info');
+      return false;
+    } finally {
+      setIsSincronizando(false);
+    }
+  };
+
+  const handleCriarNovaPlanilha = async (nome: string): Promise<boolean> => {
+    try {
+      setIsSincronizando(true);
+      const token = await getAccessToken();
+      if (!token) throw new Error('Faça login com sua conta Google para criar a planilha.');
+
+      const nova = await criarPlanilhaBancoDeDados(token, nome);
+      setPlanilhaAtiva(nova);
+      localStorage.setItem('deskops_spreadsheet_id', nova.id);
+      localStorage.setItem('deskops_spreadsheet_nome', nova.nome);
+
+      exibirNotificacao(`Nova planilha criada no seu Drive: "${nova.nome}"!`);
+      return true;
+    } catch (err: any) {
+      exibirNotificacao('Erro ao criar nova planilha: ' + err?.message, 'info');
+      return false;
+    } finally {
+      setIsSincronizando(false);
+    }
+  };
+
+  const handleRestaurarPlanilhaOficial = async () => {
+    try {
+      setIsSincronizando(true);
+      localStorage.removeItem('deskops_spreadsheet_id');
+      localStorage.removeItem('deskops_spreadsheet_nome');
+      const token = await getAccessToken();
+      if (!token) return;
+      const meta = await obterOuVincularPlanilhaOficial(token, true);
+      setPlanilhaAtiva(meta);
+      const dados = await carregarDadosDoGoogleSheets(meta.id, token, meta.abasExistentes);
+      if (dados.chamados.length > 0) setChamados(dados.chamados);
+      if (dados.equipamentos.length > 0) setEquipamentos(dados.equipamentos);
+      if (dados.funcionarios.length > 0) setFuncionarios(dados.funcionarios);
+      if (dados.movimentacoes.length > 0) setMovimentacoes(dados.movimentacoes);
+      setUltimaSincronizacao(new Date());
+    } catch (err: any) {
+      exibirNotificacao('Erro ao restaurar banco padrão: ' + err?.message, 'info');
+    } finally {
+      setIsSincronizando(false);
+    }
+  };
+
+  const handleListarPlanilhasDrive = async (): Promise<ArquivoDrive[]> => {
+    try {
+      const token = await getAccessToken();
+      if (!token) return [];
+      return await listarPlanilhasDoDrive(token);
+    } catch (e) {
+      console.warn('Erro ao listar planilhas do Drive:', e);
+      return [];
     }
   };
 
@@ -902,7 +988,7 @@ export default function App() {
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 transition-colors flex flex-col font-sans">
       
-      {/* Top Navbar com gatilho Google Sheets e Google Forms */}
+      {/* Top Navbar com gatilho Google Sheets */}
       <Navbar
         activeTab={activeTab}
         setActiveTab={setActiveTab}
@@ -914,8 +1000,7 @@ export default function App() {
         setDarkMode={setDarkMode}
         isSheetsConnected={!!planilhaAtiva}
         onOpenSheetsModal={() => setModalSheetsAberto(true)}
-        isFormsConnected={Boolean(formOficial)}
-        onOpenFormsModal={() => setModalFormsAberto(true)}
+        nomeEmpresa={nomeEmpresa}
       />
 
       {/* Banner de Status da Conexão em Tempo Real com Google Sheets */}
@@ -998,10 +1083,9 @@ export default function App() {
             onIrParaConsulta={(protocolo) => {
               setActiveTab('consulta');
             }}
-            formOficial={formOficial}
-            onSalvarFormOficial={handleSalvarFormOficial}
-            onOpenFormsModal={() => setModalFormsAberto(true)}
             tecnicoAtivo={tecnicoAtivo}
+            setores={setores}
+            nomeEmpresa={nomeEmpresa}
           />
         )}
 
@@ -1011,6 +1095,24 @@ export default function App() {
 
         {activeTab === 'emails' && (
           <SimuladorEmailView tecnicoAtivo={tecnicoAtivo} />
+        )}
+
+        {activeTab === 'utilidade' && (
+          <MinhaUtilidadeView
+            nomeEmpresa={nomeEmpresa}
+            setNomeEmpresa={setNomeEmpresa}
+            subtituloEmpresa={subtituloEmpresa}
+            setSubtituloEmpresa={setSubtituloEmpresa}
+            setores={setores}
+            setSetores={setSetores}
+            planilhaAtiva={planilhaAtiva}
+            onConectarPlanilhaPorId={handleConectarPlanilhaPorId}
+            onCriarNovaPlanilha={handleCriarNovaPlanilha}
+            onRestaurarPlanilhaOficial={handleRestaurarPlanilhaOficial}
+            onListarPlanilhasDrive={handleListarPlanilhasDrive}
+            tecnicoAtivo={tecnicoAtivo}
+            onExibirNotificacao={exibirNotificacao}
+          />
         )}
       </main>
 
@@ -1031,17 +1133,7 @@ export default function App() {
         ultimaSincronizacao={ultimaSincronizacao}
       />
 
-      {/* Modal de Conexão e Gerenciamento do Google Forms */}
-      <GoogleFormsModal
-        isOpen={modalFormsAberto}
-        onClose={() => setModalFormsAberto(false)}
-        formOficial={formOficial}
-        onSalvarFormOficial={handleSalvarFormOficial}
-        tecnicoAtivo={tecnicoAtivo}
-        userGoogle={userGoogle}
-        planilhaAtiva={planilhaAtiva}
-        onExibirNotificacao={exibirNotificacao}
-      />
+
 
       {/* Modal de Confirmação para Operações Destrutivas */}
       <DestructiveConfirmModal
@@ -1066,14 +1158,15 @@ export default function App() {
               onClick={() => setModalSheetsAberto(true)}
               className="text-emerald-600 dark:text-emerald-400 hover:underline font-medium"
             >
-              {planilhaAtiva ? '🟢 Google Sheets Conectado' : 'Conectar Planilha'}
+              {planilhaAtiva ? '🔒 Banco de Dados Oficial Fixo' : 'Conectar Banco Oficial'}
             </button>
+
             <span className="text-slate-300 dark:text-slate-700">·</span>
             <button
-              onClick={() => setModalFormsAberto(true)}
+              onClick={() => setActiveTab('utilidade')}
               className="text-purple-600 dark:text-purple-400 hover:underline font-medium"
             >
-              {formOficial ? '🟣 Google Forms Conectado' : 'Gerenciar Forms'}
+              💻 Executável & GitHub
             </button>
             <span className="text-slate-300 dark:text-slate-700">·</span>
             <button
